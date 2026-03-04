@@ -263,3 +263,11 @@ print(f"Draft created with ID: {draft_id}")
 | Token expired / auth loop | Delete `token.json` and re-run to re-authenticate |
 | `NOTION_TOKEN must be set` | Add your Notion internal integration token to `.env` |
 | `Could not find database with ID` | Share the Notion database with your integration (step 5b) |
+
+
+%TODO
+
+Notion connectivity is slow and expensive.
+On start, cache both Notion tables to local Sqlite storage locations, these are rocket fast for address retrievals and changes.
+On update/insert, mark rows as dirty.
+On back sync, update only contacts with dirty rows.

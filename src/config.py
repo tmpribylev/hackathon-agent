@@ -34,6 +34,7 @@ class Config:
     anthropic_base_url: str | None = None
     notion_token: str | None = None
     notion_db_id: str | None = None
+    notion_sender_db_id: str | None = None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -45,4 +46,5 @@ class Config:
             anthropic_base_url=os.getenv("ANTHROPIC_BASE_URL"),
             notion_token=os.getenv("NOTION_TOKEN"),
             notion_db_id=os.getenv("NOTION_ACTION_ITEMS_DB_ID"),
+            notion_sender_db_id=os.getenv("NOTION_SENDER_DB_ID"),
         )
