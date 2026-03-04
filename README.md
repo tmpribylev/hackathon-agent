@@ -140,15 +140,43 @@ Category colors:
 
 ---
 
+## Notion integration setup
+
+`notion_connector.py` provides `get_client()`, `fetch_emails()`, and `write_result()` stubs for reading from and writing to a Notion database.
+
+### 1. Create a Notion public integration
+
+1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations) and click **New integration**.
+2. Set type to **Public** (not Internal).
+3. Under **OAuth Domain & URIs**, add `http://localhost:4242/callback` as a redirect URI.
+4. Save — copy the **Client ID** and **Client Secret**.
+
+### 2. Add credentials to `.env`
+
+```
+NOTION_CLIENT_ID=your-client-id
+NOTION_CLIENT_SECRET=your-client-secret
+```
+
+### 3. First-time auth
+
+Call `get_client()` from `notion_connector.py`. A browser window opens for Notion OAuth consent. After approval, the token is cached to `notion_token.json` — subsequent calls skip the browser step.
+
+> To re-authenticate, delete `notion_token.json` and run again.
+
+---
+
 ## Project structure
 
 ```
 .
-├── main.py            # CLI tool
-├── requirements.txt   # Python dependencies
-├── .env               # API key and base URL (do not commit)
-├── credentials.json   # Google OAuth client secret (do not commit)
-├── token.json         # Cached OAuth token, auto-generated (do not commit)
+├── main.py                # CLI tool (Google Sheets)
+├── notion_connector.py    # Notion OAuth + read/write stubs
+├── requirements.txt       # Python dependencies
+├── .env                   # API keys (do not commit)
+├── credentials.json       # Google OAuth client secret (do not commit)
+├── token.json             # Cached Google OAuth token, auto-generated (do not commit)
+├── notion_token.json      # Cached Notion OAuth token, auto-generated (do not commit)
 └── .gitignore
 ```
 
@@ -163,3 +191,5 @@ Category colors:
 | `Header detection failed` | Make sure your sheet has the required column headers in row 1 |
 | `403 The caller does not have permission` | Share the Google Sheet with the Google account used during OAuth |
 | Token expired / auth loop | Delete `token.json` and re-run to re-authenticate |
+| `NOTION_CLIENT_ID and NOTION_CLIENT_SECRET must be set` | Add both to `.env` |
+| Notion auth loop | Delete `notion_token.json` and re-run |
