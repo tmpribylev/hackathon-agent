@@ -22,26 +22,27 @@ CREDS_PATH = "credentials.json"
 CATEGORIES = {"Support", "Sales", "Spam", "Internal", "Finance", "Legal", "Other"}
 
 CATEGORY_COLORS = {
-    "Support": "\033[96m",    # cyan
-    "Sales":   "\033[93m",    # yellow
-    "Spam":    "\033[91m",    # red
-    "Internal":"\033[92m",    # green
-    "Finance": "\033[95m",    # magenta
-    "Legal":   "\033[94m",    # blue
-    "Other":   "\033[97m",    # white
+    "Support": "\033[96m",  # cyan
+    "Sales": "\033[93m",  # yellow
+    "Spam": "\033[91m",  # red
+    "Internal": "\033[92m",  # green
+    "Finance": "\033[95m",  # magenta
+    "Legal": "\033[94m",  # blue
+    "Other": "\033[97m",  # white
 }
 RESET = "\033[0m"
-BOLD  = "\033[1m"
-DIM   = "\033[2m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
 
 PRIORITY_COLORS = {
-    "HIGH":   "\033[91m",  # red
+    "HIGH": "\033[91m",  # red
     "MEDIUM": "\033[93m",  # yellow
-    "LOW":    "\033[92m",  # green
+    "LOW": "\033[92m",  # green
 }
 
 
 # ── Google Sheets helpers ──────────────────────────────────────────────────────
+
 
 def get_sheets_service():
     creds = None
@@ -79,10 +80,14 @@ def fetch_rows(service, spreadsheet_id: str):
     rows    — list of list of str (rows 2+), already padded to header length
     """
     sheet = service.spreadsheets()
-    result = sheet.values().get(
-        spreadsheetId=spreadsheet_id,
-        range="Sheet1",
-    ).execute()
+    result = (
+        sheet.values()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            range="Sheet1",
+        )
+        .execute()
+    )
     values = result.get("values", [])
     if not values:
         sys.exit("Sheet is empty.")
@@ -107,6 +112,7 @@ def find_col(headers: list[str], *candidates: str) -> int:
 
 
 # ── Claude analysis ────────────────────────────────────────────────────────────
+
 
 def analyze_email(
     client: anthropic.Anthropic, sender: str, date: str, subject: str, body: str
@@ -163,9 +169,9 @@ def analyze_email(
     category = "Other"
     for line in text.splitlines():
         if line.startswith("Summary:"):
-            summary = line[len("Summary:"):].strip()
+            summary = line[len("Summary:") :].strip()
         elif line.startswith("Category:"):
-            raw = line[len("Category:"):].strip()
+            raw = line[len("Category:") :].strip()
             category = raw if raw in CATEGORIES else "Other"
 
     action_items = extract_section("Action Items:", "Reply Strategy:")
@@ -175,6 +181,7 @@ def analyze_email(
 
 
 # ── Sheet write-back ───────────────────────────────────────────────────────────
+
 
 def write_results(
     service,
@@ -215,6 +222,7 @@ def write_results(
 
 # ── Console output ─────────────────────────────────────────────────────────────
 
+
 def _color_priority_line(line: str) -> str:
     """Wrap the [PRIORITY] tag in its ANSI color."""
     for priority, color in PRIORITY_COLORS.items():
@@ -247,9 +255,9 @@ def print_table(
 
     indent = "      "
     for idx, (row, result) in enumerate(zip(rows, results), start=1):
-        sender  = row[sender_i][:col_widths["sender"]]
-        date    = row[date_i][:col_widths["date"]]
-        subject = row[subject_i][:col_widths["subject"]]
+        sender = row[sender_i][: col_widths["sender"]]
+        date = row[date_i][: col_widths["date"]]
+        subject = row[subject_i][: col_widths["subject"]]
 
         if result is None:
             print(
@@ -294,6 +302,7 @@ def print_table(
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Analyze emails in a Google Sheet with Claude and write results back."
@@ -314,10 +323,10 @@ def main():
 
     # Detect required columns
     try:
-        sender_i  = find_col(headers, "sender", "from")
-        date_i    = find_col(headers, "date", "sent")
+        sender_i = find_col(headers, "sender", "from")
+        date_i = find_col(headers, "date", "sent")
         subject_i = find_col(headers, "subject")
-        body_i    = find_col(headers, "body", "body/snippet", "snippet", "message")
+        body_i = find_col(headers, "body", "body/snippet", "snippet", "message")
     except ValueError as e:
         sys.exit(f"Header detection failed: {e}")
 
@@ -354,10 +363,10 @@ def main():
             results.append(None)
             continue
         processed += 1
-        sender  = row[sender_i]
-        date    = row[date_i]
+        sender = row[sender_i]
+        date = row[date_i]
         subject = row[subject_i]
-        body    = row[body_i]
+        body = row[body_i]
         print(f"  [{processed}/{to_process}] {subject[:60]}", end="\r", flush=True)
         results.append(analyze_email(client, sender, date, subject, body))
     print(" " * 80, end="\r")  # clear progress line
@@ -368,8 +377,10 @@ def main():
 
     print_table(rows, results, headers, sender_i, date_i, subject_i)
     last_col = col_to_letter(out_start_col + 3)
-    print(f"Done. {to_process} analyzed, {len(already_done)} skipped. "
-          f"Columns {col_to_letter(out_start_col)}–{last_col}.\n")
+    print(
+        f"Done. {to_process} analyzed, {len(already_done)} skipped. "
+        f"Columns {col_to_letter(out_start_col)}–{last_col}.\n"
+    )
 
 
 if __name__ == "__main__":
