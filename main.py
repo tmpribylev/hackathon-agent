@@ -2,6 +2,7 @@
 """Email Analyzer — reads emails from Google Sheets, analyzes with Claude, writes results back."""
 
 import argparse
+import os
 import sys
 
 from src.config import Config
@@ -9,6 +10,7 @@ from src.llm.client import LLMClient
 from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
 from src.agents.email_analyzer import EmailAnalyzer
+from src.notion.client import NotionClient
 
 
 def main():
@@ -29,11 +31,20 @@ def main():
     except ValueError as e:
         sys.exit(f"Error: {e}")
 
+    notion = None
+    notion_db_id = os.getenv("NOTION_ACTION_ITEMS_DB_ID")
+    if notion_db_id:
+        try:
+            notion = NotionClient()
+            print("Connected to Notion.")
+        except RuntimeError as e:
+            sys.exit(f"Error: {e}")
+
     llm = LLMClient(config)
     renderer = EmailTableRenderer()
 
     try:
-        EmailAnalyzer(llm, sheets, renderer).run()
+        EmailAnalyzer(llm, sheets, renderer, notion, notion_db_id).run()
     except ValueError as e:
         sys.exit(f"Error: {e}")
 

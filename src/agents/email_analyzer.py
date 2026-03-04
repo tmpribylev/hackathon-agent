@@ -1,17 +1,29 @@
 """Email triage agent — analyses emails via Claude and writes results to Sheets."""
 
+from __future__ import annotations
+
 from src.llm.client import LLMClient
 from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
+from src.notion.client import NotionClient
 
 CATEGORIES = {"Support", "Sales", "Spam", "Internal", "Finance", "Legal", "Other"}
 
 
 class EmailAnalyzer:
-    def __init__(self, llm: LLMClient, sheets: SheetsClient, renderer: EmailTableRenderer) -> None:
+    def __init__(
+        self,
+        llm: LLMClient,
+        sheets: SheetsClient,
+        renderer: EmailTableRenderer,
+        notion: NotionClient | None = None,
+        notion_db_id: str | None = None,
+    ) -> None:
         self._llm = llm
         self._sheets = sheets
         self._renderer = renderer
+        self._notion = notion
+        self._notion_db_id = notion_db_id
 
     # ── public entry point ────────────────────────────────────────────────────
 
@@ -47,6 +59,16 @@ class EmailAnalyzer:
         if to_process > 0:
             print("Writing results back to sheet\u2026")
             self._sheets.write_results(results, out_start_col)
+
+        if to_process > 0 and self._notion and self._notion_db_id:
+            total_items = 0
+            for result in results:
+                if result is None:
+                    continue
+                _, _, action_items, _ = result
+                if action_items:
+                    total_items += self._notion.write_action_items(self._notion_db_id, action_items)
+            print(f"Pushed {total_items} action item(s) to Notion.")
 
         self._renderer.render(rows, results, col["sender"], col["date"], col["subject"])
         last_col = SheetsClient.col_to_letter(out_start_col + 3)

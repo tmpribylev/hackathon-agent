@@ -1,14 +1,13 @@
 # Email Analyzer from Google Sheets
 
-`I_PROMISE_I_DIDNT_PRE_CODE_THIS`
-
-Reads email rows from a Google Sheet, analyzes each one with Claude (summary + category), writes the results back to the sheet, and prints a color-coded table to the console.
+Reads email rows from a Google Sheet, analyzes each one with Claude (summary, category, action items, reply strategy), writes the results back to the sheet, prints a color-coded table to the console, and optionally pushes action items to a Notion database.
 
 ## Prerequisites
 
 - Python 3.10+
 - A Google Cloud project with the **Google Sheets API** enabled
 - An **Anthropic API key**
+- *(Optional)* A Notion internal integration for action-item tracking
 
 ---
 
@@ -38,10 +37,12 @@ Copy the template and fill in your values:
 
 ```
 ANTHROPIC_API_KEY=your-api-key-here
-ANTHROPIC_BASE_URL=https://api.anthropic.com   # change only if using a proxy or custom endpoint
-```
+ANTHROPIC_BASE_URL=https://api.anthropic.com   # optional, change only if using a proxy
 
-`ANTHROPIC_BASE_URL` is optional — if it points to the default Anthropic endpoint you can leave it as-is or remove the line entirely.
+# Notion (optional — for pushing action items)
+NOTION_TOKEN=your-notion-internal-integration-token
+NOTION_ACTION_ITEMS_DB_ID=your-notion-database-id
+```
 
 ---
 
@@ -81,11 +82,46 @@ Columns can be in any order. The tool detects their positions from the header ro
 | alice@example.com | 2024-01-10 | Login issue | I can't log in on mobile… |
 | bob@vendor.com | 2024-01-11 | Q1 pricing | We'd like to offer a 15% discount… |
 
-Two new columns — **Summary** and **Category** — are written immediately after the last existing column.
+Four new columns — **Summary**, **Category**, **Action Items**, and **Reply Strategy** — are written immediately after the last existing column (or reuse existing columns if a "Summary" header is already present).
 
 ---
 
-## 5. Run
+## 5. Notion integration setup (optional)
+
+Notion integration pushes action items extracted from emails into a Notion database with **Action Item**, **Priority**, and **Status** properties.
+
+### 5a. Create a Notion internal integration
+
+1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations) and click **New integration**.
+2. Set type to **Internal**.
+3. Copy the **Internal Integration Token**.
+
+### 5b. Share the database
+
+1. Open your Notion database page.
+2. Click **"..."** (top-right) → **"Connections"**.
+3. Add your integration by name.
+
+### 5c. Add to `.env`
+
+```
+NOTION_TOKEN=ntn_...
+NOTION_ACTION_ITEMS_DB_ID=319e46034062803fb038fd948abb83f9
+```
+
+The database ID is the 32-character hex string in the database URL.
+
+### Expected database properties
+
+| Property | Type | Notes |
+|---|---|---|
+| Action Item | `title` | Main column — action item text |
+| Priority | `select` | Auto-created options: High, Medium, Low |
+| Status | `select` | Set to "Open" for new items |
+
+---
+
+## 6. Run
 
 ```bash
 python main.py <SPREADSHEET_ID>
@@ -97,24 +133,24 @@ The spreadsheet ID is the long string in the sheet URL:
 https://docs.google.com/spreadsheets/d/THIS_PART_IS_THE_ID/edit
 ```
 
-**Example:**
-
-```bash
-python main.py 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
-```
+If `NOTION_TOKEN` and `NOTION_ACTION_ITEMS_DB_ID` are set in `.env`, action items are automatically pushed to Notion after analysis.
 
 ---
 
-## 6. Console output
+## 7. Console output
 
 ```
 #     Category    Sender                    Date          Subject
 ──────────────────────────────────────────────────────────────────────────────────
 1     Support     alice@example.com         2024-01-10    Login issue on mobile app
       → Your login problem has been escalated to the mobile team.
-
-2     Sales       bob@vendor.com            2024-01-11    Q1 pricing proposal
-      → Vendor is proposing a 15% discount for an annual contract renewal.
+      Action Items:
+        - [HIGH] Escalate to mobile team immediately
+        - [LOW] Follow up in 48 hours
+      Reply Strategy:
+        1. Acknowledge the issue and apologize
+        2. Confirm escalation to the mobile team
+        3. Provide an ETA for resolution
 ```
 
 Category colors:
@@ -129,40 +165,20 @@ Category colors:
 | Legal | Blue |
 | Other | White |
 
+Priority colors: **[HIGH]** Red, **[MEDIUM]** Yellow, **[LOW]** Green.
+
 ---
 
-## 7. Output written to the sheet
+## 8. Output written to the sheet
 
 | Column | Header | Content |
 |---|---|---|
-| N (first after table) | Summary | One-sentence summary of the email |
+| N | Summary | One-sentence summary of the email |
 | N+1 | Category | One of: Support, Sales, Spam, Internal, Finance, Legal, Other |
+| N+2 | Action Items | Prioritised action items with [HIGH]/[MEDIUM]/[LOW] tags |
+| N+3 | Reply Strategy | Numbered reply steps |
 
----
-
-## Notion integration setup
-
-`notion_connector.py` provides `get_client()`, `fetch_emails()`, and `write_result()` stubs for reading from and writing to a Notion database.
-
-### 1. Create a Notion public integration
-
-1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations) and click **New integration**.
-2. Set type to **Public** (not Internal).
-3. Under **OAuth Domain & URIs**, add `http://localhost:4242/callback` as a redirect URI.
-4. Save — copy the **Client ID** and **Client Secret**.
-
-### 2. Add credentials to `.env`
-
-```
-NOTION_CLIENT_ID=your-client-id
-NOTION_CLIENT_SECRET=your-client-secret
-```
-
-### 3. First-time auth
-
-Call `get_client()` from `notion_connector.py`. A browser window opens for Notion OAuth consent. After approval, the token is cached to `notion_token.json` — subsequent calls skip the browser step.
-
-> To re-authenticate, delete `notion_token.json` and run again.
+Already-processed rows (those with an existing Summary value) are skipped on re-runs.
 
 ---
 
@@ -170,13 +186,25 @@ Call `get_client()` from `notion_connector.py`. A browser window opens for Notio
 
 ```
 .
-├── main.py                # CLI tool (Google Sheets)
-├── notion_connector.py    # Notion OAuth + read/write stubs
-├── requirements.txt       # Python dependencies
-├── .env                   # API keys (do not commit)
-├── credentials.json       # Google OAuth client secret (do not commit)
-├── token.json             # Cached Google OAuth token, auto-generated (do not commit)
-├── notion_token.json      # Cached Notion OAuth token, auto-generated (do not commit)
+├── main.py                    # CLI entry point
+├── src/
+│   ├── config.py              # Config dataclass, loads .env
+│   ├── llm/
+│   │   └── client.py          # LLMClient (Anthropic SDK wrapper)
+│   ├── sheets/
+│   │   └── client.py          # SheetsClient (Google Sheets auth + read/write)
+│   ├── notion/
+│   │   └── client.py          # NotionClient (internal integration + action item writer)
+│   ├── console/
+│   │   └── renderer.py        # EmailTableRenderer (ANSI-coloured console output)
+│   └── agents/
+│       └── email_analyzer.py  # EmailAnalyzer (prompt, parsing, orchestration)
+├── requirements.txt
+├── pyproject.toml             # Black & Pylint config
+├── .env                       # API keys (do not commit)
+├── .env.example               # Template for .env
+├── credentials.json           # Google OAuth client secret (do not commit)
+├── token.json                 # Cached Google OAuth token, auto-generated (do not commit)
 └── .gitignore
 ```
 
@@ -191,5 +219,5 @@ Call `get_client()` from `notion_connector.py`. A browser window opens for Notio
 | `Header detection failed` | Make sure your sheet has the required column headers in row 1 |
 | `403 The caller does not have permission` | Share the Google Sheet with the Google account used during OAuth |
 | Token expired / auth loop | Delete `token.json` and re-run to re-authenticate |
-| `NOTION_CLIENT_ID and NOTION_CLIENT_SECRET must be set` | Add both to `.env` |
-| Notion auth loop | Delete `notion_token.json` and re-run |
+| `NOTION_TOKEN must be set` | Add your Notion internal integration token to `.env` |
+| `Could not find database with ID` | Share the Notion database with your integration (step 5b) |
