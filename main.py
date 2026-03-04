@@ -3,7 +3,6 @@
 
 import argparse
 import logging
-import os
 import sys
 
 from src.config import Config
@@ -42,14 +41,10 @@ def main():
         sys.exit(f"Error: {e}")
 
     notion = None
-    notion_db_id = os.getenv("NOTION_ACTION_ITEMS_DB_ID")
-    if notion_db_id:
-        try:
-            notion = NotionClient()
-            print("Connected to Notion.")
-        except RuntimeError as e:
-            log.error("Notion connection failed: %s", e)
-            sys.exit(f"Error: {e}")
+    notion_db_id = config.notion_db_id
+    if notion_db_id and config.notion_token:
+        notion = NotionClient(config.notion_token)
+        print("Connected to Notion.")
 
     llm = LLMClient(config)
     renderer = EmailTableRenderer()

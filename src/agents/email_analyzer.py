@@ -5,14 +5,13 @@ from __future__ import annotations
 import datetime
 import logging
 
+from src.config import CATEGORIES, DEFAULT_CATEGORY, EMAIL_ANALYSIS_MAX_TOKENS
 from src.llm.client import LLMClient
 from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
 from src.notion.client import NotionClient
 
 log = logging.getLogger(__name__)
-
-CATEGORIES = {"Support", "Sales", "Spam", "Internal", "Finance", "Legal", "Other"}
 
 
 class EmailAnalyzer:
@@ -184,7 +183,7 @@ class EmailAnalyzer:
     ) -> tuple[str, str, str, str]:
         """Return (summary, category, action_items, reply_strategy)."""
         prompt = self._build_prompt(sender, date, subject, body)
-        text = self._llm.complete(prompt, max_tokens=2048)
+        text = self._llm.complete(prompt, max_tokens=EMAIL_ANALYSIS_MAX_TOKENS)
 
         def extract_section(label: str, next_label: str | None) -> str:
             start = text.find(label)
@@ -205,7 +204,7 @@ class EmailAnalyzer:
                 summary = line[len("Summary:") :].strip()
             elif line.startswith("Category:"):
                 raw = line[len("Category:") :].strip()
-                category = raw if raw in CATEGORIES else "Other"
+                category = raw if raw in CATEGORIES else DEFAULT_CATEGORY
 
         action_items = extract_section("Action Items:", "Reply Strategy:")
         reply_strategy = extract_section("Reply Strategy:", None)

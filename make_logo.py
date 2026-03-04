@@ -3,10 +3,10 @@
 from PIL import Image, ImageDraw, ImageFont
 
 SIZE = 512
-BG = "#191919"          # Notion dark
+BG = "#191919"  # Notion dark
 WHITE = "#FFFFFF"
 GRAY = "#AAAAAA"
-ACCENT = "#4A90D9"      # blue accent
+ACCENT = "#4A90D9"  # blue accent
 
 img = Image.new("RGBA", (SIZE, SIZE), BG)
 d = ImageDraw.Draw(img)

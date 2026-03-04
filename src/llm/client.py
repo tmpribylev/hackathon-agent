@@ -4,7 +4,7 @@ import logging
 
 import anthropic
 
-from src.config import Config
+from src.config import Config, DEFAULT_MAX_TOKENS, DEFAULT_MODEL
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class LLMClient:
         self._client = anthropic.Anthropic(**kwargs)
 
     def complete(
-        self, prompt: str, max_tokens: int = 1024, model: str = "claude-sonnet-4-6"
+        self, prompt: str, max_tokens: int = DEFAULT_MAX_TOKENS, model: str = DEFAULT_MODEL
     ) -> str:
         """Send a single-turn prompt and return the response text."""
         log.debug("LLM request: model=%s, max_tokens=%d", model, max_tokens)
