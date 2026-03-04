@@ -194,7 +194,7 @@ Standalone Gmail connector for creating draft messages.
 
 ### 2. Update OAuth Consent Screen
 
-1. Go to **APIs & Services → OAuth consent screen**
+1. Go to **APIs & Services → OAuth consent screen → Data access**
 2. Add scope: `https://www.googleapis.com/auth/gmail.compose`
 3. Click **Save**
 
