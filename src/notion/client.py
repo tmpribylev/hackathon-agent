@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 
 from dotenv import load_dotenv
 from notion_client import Client
+
+log = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -38,6 +41,7 @@ class NotionClient:
         Returns the number of pages created.
         """
         items = self._parse_action_items(action_items)
+        log.info("Creating %d action item(s) in Notion database %s", len(items), database_id)
         for item in items:
             properties: dict = {
                 "Action Item": {"title": [{"text": {"content": item["title"]}}]},
@@ -56,6 +60,7 @@ class NotionClient:
                 parent={"database_id": database_id},
                 properties=properties,
             )
+            log.debug("Created Notion page: %s [%s]", item["title"], item["priority"])
         return len(items)
 
     @staticmethod

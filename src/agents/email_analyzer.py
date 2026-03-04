@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import datetime
+import logging
 
 from src.llm.client import LLMClient
 from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
 from src.notion.client import NotionClient
+
+log = logging.getLogger(__name__)
 
 CATEGORIES = {"Support", "Sales", "Spam", "Internal", "Finance", "Legal", "Other"}
 
@@ -31,18 +34,22 @@ class EmailAnalyzer:
     # ── public entry point ────────────────────────────────────────────────────
 
     def run(self) -> None:
+        log.info("Fetching rows from sheet")
         print("Fetching rows\u2026")
         headers, rows = self._sheets.fetch_rows()
+        log.info("Fetched %d row(s), headers: %s", len(rows), headers)
 
         col = self._detect_columns(headers)
         out_summary_i, out_start_col = self._detect_output_columns(headers)
         already_done = self._build_already_done(rows, out_summary_i)
 
         if already_done:
+            log.info("Skipping %d already-processed row(s)", len(already_done))
             print(f"Skipping {len(already_done)} already-processed row(s).")
 
         results: list[tuple[str, str, str, str] | None] = []
         to_process = len(rows) - len(already_done)
+        log.info("Will analyze %d email(s)", to_process)
         print(f"Analyzing {to_process} email(s) with Claude\u2026\n")
 
         processed = 0
@@ -55,11 +62,15 @@ class EmailAnalyzer:
             date = row[col["date"]]
             subject = row[col["subject"]]
             body = row[col["body"]]
+            log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
             print(f"  [{processed}/{to_process}] {subject[:60]}", end="\r", flush=True)
-            results.append(self._analyze_email(sender, date, subject, body))
+            result = self._analyze_email(sender, date, subject, body)
+            log.info("Result — category=%s, summary=%s", result[1], result[0])
+            results.append(result)
         print(" " * 80, end="\r")  # clear progress line
 
         if to_process > 0:
+            log.info("Writing results back to sheet")
             print("Writing results back to sheet\u2026")
             self._sheets.write_results(results, out_start_col)
 
@@ -82,7 +93,9 @@ class EmailAnalyzer:
                         )
                     except Exception as exc:
                         failed += 1
+                        log.error("Notion write failed for row %d: %s", i + 2, exc)
                         print(f"\n  \u26a0 Notion write failed for row {i + 2}: {exc}")
+            log.info("Pushed %d action item(s) to Notion (%d failed)", total_items, failed)
             msg = f"Pushed {total_items} action item(s) to Notion."
             if failed:
                 msg += f" ({failed} failed)"
@@ -90,6 +103,7 @@ class EmailAnalyzer:
 
         self._renderer.render(rows, results, col["sender"], col["date"], col["subject"])
         last_col = SheetsClient.col_to_letter(out_start_col + 2)
+        log.info("Done. %d analyzed, %d skipped.", to_process, len(already_done))
         print(
             f"Done. {to_process} analyzed, {len(already_done)} skipped. "
             f"Columns {SheetsClient.col_to_letter(out_start_col)}\u2013{last_col}.\n"

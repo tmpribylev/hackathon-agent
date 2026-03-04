@@ -1,7 +1,10 @@
 """Google Sheets authentication and read/write operations."""
 
+import logging
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -19,11 +22,13 @@ class SheetsClient:
         self._service = self._authenticate()
 
     def _authenticate(self):
+        log.info("Authenticating with Google Sheets API")
         creds = None
         if Path(self.TOKEN_PATH).exists():
             creds = Credentials.from_authorized_user_file(self.TOKEN_PATH, self.SCOPES)
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
+                log.info("Refreshing expired credentials")
                 creds.refresh(Request())
             else:
                 if not Path(self.CREDS_PATH).exists():
@@ -31,10 +36,12 @@ class SheetsClient:
                         f"{self.CREDS_PATH} not found. "
                         "Download it from Google Cloud Console and place it here."
                     )
+                log.info("Running OAuth flow for new credentials")
                 flow = InstalledAppFlow.from_client_secrets_file(self.CREDS_PATH, self.SCOPES)
                 creds = flow.run_local_server(port=0)
             with open(self.TOKEN_PATH, "w") as f:
                 f.write(creds.to_json())
+        log.info("Google Sheets authentication successful")
         return build("sheets", "v4", credentials=creds)
 
     def fetch_rows(self, sheet: str = "Sheet1") -> tuple[list[str], list[list[str]]]:
@@ -91,6 +98,7 @@ class SheetsClient:
             )
 
         body = {"valueInputOption": "RAW", "data": data}
+        log.info("Writing %d range(s) to sheet", len(data))
         self._service.spreadsheets().values().batchUpdate(
             spreadsheetId=self._spreadsheet_id, body=body
         ).execute()

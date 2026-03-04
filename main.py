@@ -2,33 +2,43 @@
 """Email Analyzer — reads emails from Google Sheets, analyzes with Claude, writes results back."""
 
 import argparse
+import logging
 import os
 import sys
 
 from src.config import Config
+from src.logger import setup_logging
 from src.llm.client import LLMClient
 from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
 from src.agents.email_analyzer import EmailAnalyzer
 from src.notion.client import NotionClient
 
+log = logging.getLogger(__name__)
+
 
 def main():
+    setup_logging()
+
     parser = argparse.ArgumentParser(
         description="Analyze emails in a Google Sheet with Claude and write results back."
     )
     parser.add_argument("spreadsheet_id", help="Google Sheets spreadsheet ID")
     args = parser.parse_args()
 
+    log.info("Starting email analyzer for spreadsheet %s", args.spreadsheet_id)
+
     try:
         config = Config.from_env()
     except ValueError as e:
+        log.error("Configuration error: %s", e)
         sys.exit(f"Error: {e}")
 
     print("Authenticating with Google Sheets\u2026")
     try:
         sheets = SheetsClient(args.spreadsheet_id)
     except ValueError as e:
+        log.error("Sheets authentication failed: %s", e)
         sys.exit(f"Error: {e}")
 
     notion = None
@@ -38,6 +48,7 @@ def main():
             notion = NotionClient()
             print("Connected to Notion.")
         except RuntimeError as e:
+            log.error("Notion connection failed: %s", e)
             sys.exit(f"Error: {e}")
 
     llm = LLMClient(config)
@@ -46,7 +57,10 @@ def main():
     try:
         EmailAnalyzer(llm, sheets, renderer, notion, notion_db_id).run()
     except ValueError as e:
+        log.error("Analyzer failed: %s", e)
         sys.exit(f"Error: {e}")
+
+    log.info("Run complete.")
 
 
 if __name__ == "__main__":
