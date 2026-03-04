@@ -17,6 +17,12 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 DEFAULT_MAX_TOKENS = 1024
 EMAIL_ANALYSIS_MAX_TOKENS = 2048
 
+# ── Telegram bot ──────────────────────────────────────────────────────────────
+TG_MAX_MESSAGE_LENGTH = 4096
+TG_REPLY_DRAFT_MAX_TOKENS = 2048
+TG_CHAT_MAX_TOKENS = 1024
+TG_CHAT_MAX_HISTORY = 20
+
 # ── Priority levels ───────────────────────────────────────────────────────────
 PRIORITY_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
 DEFAULT_PRIORITY = "Medium"
@@ -34,6 +40,9 @@ class Config:
     anthropic_base_url: str | None = None
     notion_token: str | None = None
     notion_db_id: str | None = None
+    telegram_bot_token: str | None = None
+    spreadsheet_id: str | None = None
+    notion_emails_db_id: str | None = None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -45,4 +54,7 @@ class Config:
             anthropic_base_url=os.getenv("ANTHROPIC_BASE_URL"),
             notion_token=os.getenv("NOTION_TOKEN"),
             notion_db_id=os.getenv("NOTION_ACTION_ITEMS_DB_ID"),
+            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN"),
+            spreadsheet_id=os.getenv("SPREADSHEET_ID"),
+            notion_emails_db_id=os.getenv("NOTION_EMAILS_DB_ID"),
         )

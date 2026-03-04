@@ -60,6 +60,90 @@ class NotionClient:
             log.debug("Created Notion page: %s [%s]", item["title"], item["priority"])
         return len(items)
 
+    def write_email_analysis(self, database_id: str, email_data: dict) -> None:
+        """Write a full email analysis page to the Notion Emails database.
+
+        email_data keys: subject, sender, date, summary, category,
+                         action_items, reply_strategy, body
+        """
+        properties: dict = {
+            "Subject": {"title": [{"text": {"content": email_data.get("subject", "")[:2000]}}]},
+            "Sender": {"rich_text": [{"text": {"content": email_data.get("sender", "")[:2000]}}]},
+            "Date": {"rich_text": [{"text": {"content": email_data.get("date", "")[:2000]}}]},
+            "Summary": {"rich_text": [{"text": {"content": email_data.get("summary", "")[:2000]}}]},
+            "Category": {"select": {"name": email_data.get("category", DEFAULT_CATEGORY)}},
+        }
+        if email_data.get("action_items"):
+            properties["Action Items"] = {
+                "rich_text": [{"text": {"content": email_data["action_items"][:2000]}}]
+            }
+        if email_data.get("reply_strategy"):
+            properties["Reply Strategy"] = {
+                "rich_text": [{"text": {"content": email_data["reply_strategy"][:2000]}}]
+            }
+        if email_data.get("body"):
+            properties["Body"] = {"rich_text": [{"text": {"content": email_data["body"][:2000]}}]}
+
+        self._client.pages.create(
+            parent={"database_id": database_id},
+            properties=properties,
+        )
+        log.debug("Wrote email analysis to Notion: %s", email_data.get("subject", ""))
+
+    def read_email_analyses(self, database_id: str) -> list[dict]:
+        """Read all email analysis pages from the Notion Emails database.
+
+        Returns list of dicts with keys: subject, sender, date, summary,
+        category, action_items, reply_strategy, body.
+        """
+        results: list[dict] = []
+        has_more = True
+        start_cursor = None
+
+        while has_more:
+            kwargs: dict = {"database_id": database_id, "page_size": 100}
+            if start_cursor:
+                kwargs["start_cursor"] = start_cursor
+            response = self._client.databases.query(**kwargs)
+
+            for page in response.get("results", []):
+                props = page.get("properties", {})
+                results.append(
+                    {
+                        "subject": self._get_title_text(props.get("Subject", {})),
+                        "sender": self._get_rich_text(props.get("Sender", {})),
+                        "date": self._get_rich_text(props.get("Date", {})),
+                        "summary": self._get_rich_text(props.get("Summary", {})),
+                        "category": self._get_select_name(props.get("Category", {})),
+                        "action_items": self._get_rich_text(props.get("Action Items", {})),
+                        "reply_strategy": self._get_rich_text(props.get("Reply Strategy", {})),
+                        "body": self._get_rich_text(props.get("Body", {})),
+                    }
+                )
+
+            has_more = response.get("has_more", False)
+            start_cursor = response.get("next_cursor")
+
+        log.info(
+            "Read %d email analysis page(s) from Notion database %s", len(results), database_id
+        )
+        return results
+
+    @staticmethod
+    def _get_title_text(prop: dict) -> str:
+        items = prop.get("title", [])
+        return items[0].get("plain_text", "") if items else ""
+
+    @staticmethod
+    def _get_rich_text(prop: dict) -> str:
+        items = prop.get("rich_text", [])
+        return items[0].get("plain_text", "") if items else ""
+
+    @staticmethod
+    def _get_select_name(prop: dict) -> str:
+        select = prop.get("select")
+        return select.get("name", "") if select else ""
+
     @staticmethod
     def _parse_action_items(text: str) -> list[dict]:
         """Parse multi-line action items into structured dicts.
