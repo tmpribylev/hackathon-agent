@@ -1,7 +1,6 @@
 # Secrets & credentials
 .env
-token.json
-gmail_token.json
+*token.json
 credentials.json
 
 # Python
