@@ -1,6 +1,6 @@
 # Secrets & credentials
 .env
-token.json
+*token.json
 credentials.json
 
 # Python
