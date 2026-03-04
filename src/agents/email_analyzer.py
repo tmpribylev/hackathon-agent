@@ -1,33 +1,55 @@
 """Email triage agent — analyses emails via Claude and writes results to Sheets."""
 
+from __future__ import annotations
+
+import datetime
+import logging
+
 from src.llm.client import LLMClient
 from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
+from src.notion.client import NotionClient
+
+log = logging.getLogger(__name__)
 
 CATEGORIES = {"Support", "Sales", "Spam", "Internal", "Finance", "Legal", "Other"}
 
 
 class EmailAnalyzer:
-    def __init__(self, llm: LLMClient, sheets: SheetsClient, renderer: EmailTableRenderer) -> None:
+    def __init__(
+        self,
+        llm: LLMClient,
+        sheets: SheetsClient,
+        renderer: EmailTableRenderer,
+        notion: NotionClient | None = None,
+        notion_db_id: str | None = None,
+    ) -> None:
         self._llm = llm
         self._sheets = sheets
         self._renderer = renderer
+        self._notion = notion
+        self._notion_db_id = notion_db_id
+        self._today = datetime.date.today().isoformat()
 
     # ── public entry point ────────────────────────────────────────────────────
 
     def run(self) -> None:
+        log.info("Fetching rows from sheet")
         print("Fetching rows\u2026")
         headers, rows = self._sheets.fetch_rows()
+        log.info("Fetched %d row(s), headers: %s", len(rows), headers)
 
         col = self._detect_columns(headers)
         out_summary_i, out_start_col = self._detect_output_columns(headers)
         already_done = self._build_already_done(rows, out_summary_i)
 
         if already_done:
+            log.info("Skipping %d already-processed row(s)", len(already_done))
             print(f"Skipping {len(already_done)} already-processed row(s).")
 
         results: list[tuple[str, str, str, str] | None] = []
         to_process = len(rows) - len(already_done)
+        log.info("Will analyze %d email(s)", to_process)
         print(f"Analyzing {to_process} email(s) with Claude\u2026\n")
 
         processed = 0
@@ -40,16 +62,48 @@ class EmailAnalyzer:
             date = row[col["date"]]
             subject = row[col["subject"]]
             body = row[col["body"]]
+            log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
             print(f"  [{processed}/{to_process}] {subject[:60]}", end="\r", flush=True)
-            results.append(self._analyze_email(sender, date, subject, body))
+            result = self._analyze_email(sender, date, subject, body)
+            log.info("Result — category=%s, summary=%s", result[1], result[0])
+            results.append(result)
         print(" " * 80, end="\r")  # clear progress line
 
         if to_process > 0:
+            log.info("Writing results back to sheet")
             print("Writing results back to sheet\u2026")
             self._sheets.write_results(results, out_start_col)
 
+        if to_process > 0 and self._notion and self._notion_db_id:
+            total_items = 0
+            failed = 0
+            for i, result in enumerate(results):
+                if result is None:
+                    continue
+                _, category, action_items, _ = result
+                row = rows[i]
+                source = f"{row[col['subject']]} \u2014 {row[col['sender']]}"
+                if action_items:
+                    try:
+                        total_items += self._notion.write_action_items(
+                            self._notion_db_id,
+                            action_items,
+                            category=category,
+                            source_email=source,
+                        )
+                    except Exception as exc:
+                        failed += 1
+                        log.error("Notion write failed for row %d: %s", i + 2, exc)
+                        print(f"\n  \u26a0 Notion write failed for row {i + 2}: {exc}")
+            log.info("Pushed %d action item(s) to Notion (%d failed)", total_items, failed)
+            msg = f"Pushed {total_items} action item(s) to Notion."
+            if failed:
+                msg += f" ({failed} failed)"
+            print(msg)
+
         self._renderer.render(rows, results, col["sender"], col["date"], col["subject"])
-        last_col = SheetsClient.col_to_letter(out_start_col + 3)
+        last_col = SheetsClient.col_to_letter(out_start_col + 2)
+        log.info("Done. %d analyzed, %d skipped.", to_process, len(already_done))
         print(
             f"Done. {to_process} analyzed, {len(already_done)} skipped. "
             f"Columns {SheetsClient.col_to_letter(out_start_col)}\u2013{last_col}.\n"
@@ -90,20 +144,35 @@ class EmailAnalyzer:
             "Category: <exactly one of: Support, Sales, Spam, Internal, Finance, "
             "Legal, Other>\n"
             "Action Items:\n"
-            "- [HIGH] <urgent action if any>\n"
-            "- [MEDIUM] <normal-priority action if any>\n"
-            "- [LOW] <low-priority action if any>\n"
+            "- [CRITICAL] <short action title>\n"
+            "  Details: <detailed explanation of what needs to be done and why>\n"
+            '  Due: <YYYY-MM-DD suggested deadline based on urgency, or "none">\n'
+            "- [HIGH] <short action title>\n"
+            "  Details: <detailed explanation>\n"
+            '  Due: <YYYY-MM-DD or "none">\n'
+            "- [MEDIUM] <short action title>\n"
+            "  Details: <detailed explanation>\n"
+            '  Due: <YYYY-MM-DD or "none">\n'
             "Reply Strategy:\n"
             "1. <first step>\n"
             "2. <second step>\n"
             "3. <third step \u2014 add more steps as needed>\n\n"
             "Rules:\n"
             "- Omit action item lines that do not apply (do not write empty bullets).\n"
+            "- Each action item MUST have a Details line and a Due line.\n"
+            "- CRITICAL is reserved for truly urgent, business-critical matters that "
+            "demand immediate action (e.g. security incidents, legal deadlines, "
+            "production outages). Do not over-use it.\n"
+            "- The Due date should be realistic based on urgency: CRITICAL = today or "
+            "next business day, HIGH = within 1-2 days, "
+            'MEDIUM = within a week, LOW = within 2 weeks. Use "none" only if truly '
+            "no deadline applies.\n"
             "- The reply strategy must be a concrete, ordered sequence of communication "
             "steps (e.g. acknowledge, resolve urgent items, start a side thread, "
             "request a call, reply with minutes and final decision). Tailor the steps "
             "to this specific email.\n"
             "- No extra commentary outside the four sections.\n\n"
+            f"Today's date: {self._today}\n"
             f"From: {sender}\n"
             f"Date: {date}\n"
             f"Subject: {subject}\n"
@@ -115,21 +184,19 @@ class EmailAnalyzer:
     ) -> tuple[str, str, str, str]:
         """Return (summary, category, action_items, reply_strategy)."""
         prompt = self._build_prompt(sender, date, subject, body)
-        text = self._llm.complete(prompt)
+        text = self._llm.complete(prompt, max_tokens=2048)
 
         def extract_section(label: str, next_label: str | None) -> str:
-            start_marker = f"{label}\n"
-            start = text.find(start_marker)
+            start = text.find(label)
             if start == -1:
                 return ""
-            start += len(start_marker)
+            start += len(label)
             if next_label:
-                end = text.find(f"\n{next_label}\n", start)
-                if end == -1:
-                    end = text.find(f"\n{next_label}:", start)
+                end = text.find(f"\n{next_label}", start)
             else:
                 end = -1
-            return text[start:end].strip() if end != -1 else text[start:].strip()
+            content = text[start:end] if end != -1 else text[start:]
+            return content.strip()
 
         summary = ""
         category = "Other"
