@@ -12,6 +12,7 @@ from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
 from src.agents.email_analyzer import EmailAnalyzer
 from src.notion.client import NotionClient
+from src.gmail.client import GmailClient
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,21 @@ def main():
 
     llm = LLMClient(config)
     renderer = EmailTableRenderer()
+
+    try:
+        # First time it will fire a confirmation window
+        gmail = GmailClient()
+
+        # Create a test draft
+        draft_id = gmail.create_draft(
+            message="Test draft from Python",
+            recipient="your-email@example.com",
+            subject="Test Draft",
+        )
+        print(f"Draft created: {draft_id}")
+    except ValueError as e:
+        log.error("Gmail drafting client failed: %s", e)
+        sys.exit(f"Error: {e}")
 
     try:
         EmailAnalyzer(llm, sheets, renderer, notion, notion_db_id).run()

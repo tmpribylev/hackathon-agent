@@ -182,6 +182,48 @@ Already-processed rows (those with an existing Summary value) are skipped on re-
 
 ---
 
+## Gmail Connector
+
+Standalone Gmail connector for creating draft messages.
+
+### 1. Enable Gmail API
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) (same project as Sheets)
+2. Navigate to **APIs & Services → Library**
+3. Search for **Gmail API** and click **Enable**
+
+### 2. Update OAuth Consent Screen
+
+1. Go to **APIs & Services → OAuth consent screen → Data access**
+2. Add scope: `https://www.googleapis.com/auth/gmail.compose`
+3. Click **Save**
+
+> You can use the same `credentials.json` file — just add the Gmail API scope.
+
+### 3. Usage
+
+```python
+from src.gmail.client import GmailClient
+
+# Initialize (first run opens browser for OAuth)
+gmail = GmailClient()
+
+# Create a draft
+draft_id = gmail.create_draft(
+    message="Hello, this is the email body.",
+    recipient="example@example.com",
+    subject="Test Draft"
+)
+
+print(f"Draft created with ID: {draft_id}")
+```
+
+**Token caching**: After first authentication, token saved to `gmail_token.json` for future use.
+
+> To re-authenticate, delete `gmail_token.json` and run again.
+
+---
+
 ## Project structure
 
 ```
