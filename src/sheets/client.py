@@ -65,28 +65,28 @@ class SheetsClient:
         start_col: int,
         sheet: str = "Sheet1",
     ) -> None:
-        """Write (summary, category, action_items, reply_strategy) back to the sheet.
+        """Write (summary, category, reply_strategy) back to the sheet.
 
         start_col — 1-based column index of the Summary column.
         Row 1 gets headers; rows 2+ get data.  None entries are skipped.
         """
-        cols = [self.col_to_letter(start_col + i) for i in range(4)]
+        cols = [self.col_to_letter(start_col + i) for i in range(3)]
         first, last = cols[0], cols[-1]
 
         data = [
             {
                 "range": f"{sheet}!{first}1:{last}1",
-                "values": [["Summary", "Category", "Action Items", "Reply Strategy"]],
+                "values": [["Summary", "Category", "Reply Strategy"]],
             }
         ]
         for i, result in enumerate(results, start=2):
             if result is None:
                 continue
-            summary, category, action_items, reply_strategy = result
+            summary, category, _, reply_strategy = result
             data.append(
                 {
                     "range": f"{sheet}!{first}{i}:{last}{i}",
-                    "values": [[summary, category, action_items, reply_strategy]],
+                    "values": [[summary, category, reply_strategy]],
                 }
             )
 

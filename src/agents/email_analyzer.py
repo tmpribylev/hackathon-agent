@@ -89,7 +89,7 @@ class EmailAnalyzer:
             print(msg)
 
         self._renderer.render(rows, results, col["sender"], col["date"], col["subject"])
-        last_col = SheetsClient.col_to_letter(out_start_col + 3)
+        last_col = SheetsClient.col_to_letter(out_start_col + 2)
         print(
             f"Done. {to_process} analyzed, {len(already_done)} skipped. "
             f"Columns {SheetsClient.col_to_letter(out_start_col)}\u2013{last_col}.\n"
