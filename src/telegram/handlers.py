@@ -46,14 +46,17 @@ def _get_service(context: ContextTypes.DEFAULT_TYPE) -> EmailBotService:
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/start from user=%d", update.effective_user.id)
     await update.message.reply_text(HELP_TEXT, parse_mode="HTML")
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/help from user=%d", update.effective_user.id)
     await update.message.reply_text(HELP_TEXT, parse_mode="HTML")
 
 
 async def analyze_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/analyze from user=%d", update.effective_user.id)
     service = _get_service(context)
     await update.message.reply_text("Running email analysis\u2026")
     try:
@@ -65,6 +68,7 @@ async def analyze_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def load_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/load from user=%d", update.effective_user.id)
     service = _get_service(context)
     await update.message.reply_text("Loading from Notion\u2026")
     try:
@@ -79,6 +83,7 @@ async def load_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def emails_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/emails from user=%d", update.effective_user.id)
     service = _get_service(context)
     emails = service.store.all_emails()
     if not emails:
@@ -94,6 +99,7 @@ async def emails_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def actions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/actions from user=%d", update.effective_user.id)
     service = _get_service(context)
     emails = service.store.emails_with_action_items()
     text = format_action_items_message(emails)
@@ -102,6 +108,7 @@ async def actions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def reset_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/reset from user=%d", update.effective_user.id)
     service = _get_service(context)
     service.reset_chat(update.effective_user.id)
     await update.message.reply_text("Chat history cleared.")
@@ -137,6 +144,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     service = _get_service(context)
     data = query.data
+    log.info("Callback query=%s from user=%d", data, update.effective_user.id)
     prefix, _, value = data.partition(":")
 
     if prefix == "view":

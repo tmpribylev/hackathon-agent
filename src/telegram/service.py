@@ -38,7 +38,9 @@ class EmailBotService:
 
         Returns the number of emails analyzed.
         """
+        log.info("Starting email analysis pipeline")
         results = self._analyzer.analyze()
+        log.info("Analysis complete: %d email(s) analyzed", len(results))
 
         if results and self._notion and self._notion_emails_db_id:
             for r in results:
@@ -68,8 +70,10 @@ class EmailBotService:
         Returns the number of emails loaded.
         """
         if not self._notion or not self._notion_emails_db_id:
+            log.info("Notion not configured, skipping load")
             return 0
 
+        log.info("Loading email analyses from Notion")
         pages = self._notion.read_email_analyses(self._notion_emails_db_id)
         emails = [
             AnalyzedEmail(
@@ -86,6 +90,7 @@ class EmailBotService:
             for i, p in enumerate(pages)
         ]
         self.store.load(emails)
+        log.info("Loaded %d email(s) from Notion", len(emails))
         return len(emails)
 
     # ── draft reply ───────────────────────────────────────────────────────────
@@ -94,6 +99,7 @@ class EmailBotService:
         """Generate a draft reply using LLM with email context + strategy."""
         email = self.store.get(row_index)
         if not email:
+            log.warning("generate_reply_draft: email not found for row_index=%d", row_index)
             return "Email not found."
 
         prompt = (
@@ -108,8 +114,10 @@ class EmailBotService:
             f"Reply Strategy:\n{email.reply_strategy}\n\n"
             "Draft reply:"
         )
+        log.info("Generating draft reply for row_index=%d subject=%s", row_index, email.subject)
         draft = self._llm.complete(prompt, max_tokens=TG_REPLY_DRAFT_MAX_TOKENS)
         self.store.set_draft_reply(row_index, draft)
+        log.info("Draft reply generated: %d chars", len(draft))
         return draft
 
     # ── gmail draft ────────────────────────────────────────────────────────────
@@ -129,6 +137,7 @@ class EmailBotService:
             raise ValueError("No draft reply generated yet. Generate one first.")
 
         subject = f"Re: {email.subject}" if not email.subject.startswith("Re:") else email.subject
+        log.info("Saving draft reply to Gmail for row_index=%d to=%s", row_index, email.sender)
         return self._gmail.create_draft(
             message=email.draft_reply,
             recipient=email.sender,
@@ -139,6 +148,7 @@ class EmailBotService:
 
     def chat(self, user_id: int, message: str) -> str:
         """Multi-turn LLM chat with email context as system prompt."""
+        log.debug("Chat message from user=%d: %s", user_id, message[:100])
         history = self._chat_histories.setdefault(user_id, [])
         history.append({"role": "user", "content": message})
 
@@ -157,6 +167,7 @@ class EmailBotService:
 
     def reset_chat(self, user_id: int) -> None:
         """Clear chat history for a user."""
+        log.info("Chat history reset for user=%d", user_id)
         self._chat_histories.pop(user_id, None)
 
     # ── internal ──────────────────────────────────────────────────────────────

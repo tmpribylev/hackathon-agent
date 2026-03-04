@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,6 +32,7 @@ class EmailContextStore:
 
     def load(self, emails: list[AnalyzedEmail]) -> None:
         """Populate the store, replacing any previous data."""
+        log.info("Loading %d email(s) into context store", len(emails))
         self._emails = {e.row_index: e for e in emails}
 
     def all_emails(self) -> list[AnalyzedEmail]:
