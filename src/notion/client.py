@@ -7,14 +7,14 @@ import re
 
 from notion_client import Client
 
-from src.config import DEFAULT_CATEGORY, PRIORITY_TAG_RE, DEFAULT_PRIORITY
+from src.config import DEFAULT_CATEGORY, NOTION_API_VERSION, PRIORITY_TAG_RE, DEFAULT_PRIORITY
 
 log = logging.getLogger(__name__)
 
 
 class NotionClient:
     def __init__(self, token: str) -> None:
-        self._client = Client(auth=token)
+        self._client = Client(auth=token, notion_version=NOTION_API_VERSION)
 
     def write_action_items(
         self,
@@ -65,7 +65,11 @@ class NotionClient:
 
         email_data keys: subject, sender, date, summary, category,
                          action_items, reply_strategy, body
+
+        On first call, ensures the database has the required properties.
         """
+        self._ensure_emails_db_schema(database_id)
+
         properties: dict = {
             "Subject": {"title": [{"text": {"content": email_data.get("subject", "")[:2000]}}]},
             "Sender": {"rich_text": [{"text": {"content": email_data.get("sender", "")[:2000]}}]},
@@ -101,10 +105,14 @@ class NotionClient:
         start_cursor = None
 
         while has_more:
-            kwargs: dict = {"database_id": database_id, "page_size": 100}
+            body: dict = {"page_size": 100}
             if start_cursor:
-                kwargs["start_cursor"] = start_cursor
-            response = self._client.databases.query(**kwargs)
+                body["start_cursor"] = start_cursor
+            response = self._client.request(
+                path=f"databases/{database_id}/query",
+                method="POST",
+                body=body,
+            )
 
             for page in response.get("results", []):
                 props = page.get("properties", {})
@@ -128,6 +136,43 @@ class NotionClient:
             "Read %d email analysis page(s) from Notion database %s", len(results), database_id
         )
         return results
+
+    _emails_db_ready: set[str] = set()
+
+    def _ensure_emails_db_schema(self, database_id: str) -> None:
+        """Add missing properties to the Notion Emails database (idempotent)."""
+        if database_id in self._emails_db_ready:
+            return
+
+        db = self._client.databases.retrieve(database_id)
+        existing = set(db.get("properties", {}).keys())
+
+        needed: dict = {}
+        # Title property — Notion databases always have exactly one title column.
+        # If the existing title column isn't called "Subject", rename it.
+        if "Subject" not in existing:
+            # Find the current title property name
+            for name, prop in db.get("properties", {}).items():
+                if prop.get("type") == "title":
+                    needed[name] = {"name": "Subject", "title": {}}
+                    break
+        for field in ("Sender", "Date", "Summary", "Action Items", "Reply Strategy", "Body"):
+            if field not in existing:
+                needed[field] = {"rich_text": {}}
+        if "Category" not in existing:
+            needed["Category"] = {"select": {}}
+
+        if needed:
+            log.info("Adding missing properties to Notion Emails DB: %s", list(needed.keys()))
+            # databases.update() in notion-client v3 drops "properties" via pick(),
+            # so we use client.request() directly.
+            self._client.request(
+                path=f"databases/{database_id}",
+                method="PATCH",
+                body={"properties": needed},
+            )
+
+        self._emails_db_ready.add(database_id)
 
     @staticmethod
     def _get_title_text(prop: dict) -> str:

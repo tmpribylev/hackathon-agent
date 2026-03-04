@@ -28,6 +28,11 @@ PRIORITY_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
 DEFAULT_PRIORITY = "Medium"
 PRIORITY_TAG_RE = re.compile(r"\[(CRITICAL|HIGH|MEDIUM|LOW)\]\s*")
 
+# ── Notion ────────────────────────────────────────────────────────────────────
+# Pin to a stable API version — v3 client defaults to 2025-09-03 which removed
+# databases/{id}/query and silently ignores property updates.
+NOTION_API_VERSION = "2022-06-28"
+
 # ── Google Sheets paths / scopes ──────────────────────────────────────────────
 TOKEN_PATH = "token.json"
 CREDS_PATH = "credentials.json"
