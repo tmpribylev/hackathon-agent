@@ -130,9 +130,12 @@ class EmailAnalyzer:
             "Category: <exactly one of: Support, Sales, Spam, Internal, Finance, "
             "Legal, Other>\n"
             "Action Items:\n"
-            "- [HIGH] <short action title>\n"
+            "- [CRITICAL] <short action title>\n"
             "  Details: <detailed explanation of what needs to be done and why>\n"
             '  Due: <YYYY-MM-DD suggested deadline based on urgency, or "none">\n'
+            "- [HIGH] <short action title>\n"
+            "  Details: <detailed explanation>\n"
+            '  Due: <YYYY-MM-DD or "none">\n'
             "- [MEDIUM] <short action title>\n"
             "  Details: <detailed explanation>\n"
             '  Due: <YYYY-MM-DD or "none">\n'
@@ -143,7 +146,11 @@ class EmailAnalyzer:
             "Rules:\n"
             "- Omit action item lines that do not apply (do not write empty bullets).\n"
             "- Each action item MUST have a Details line and a Due line.\n"
-            "- The Due date should be realistic based on urgency: HIGH = within 1-2 days, "
+            "- CRITICAL is reserved for truly urgent, business-critical matters that "
+            "demand immediate action (e.g. security incidents, legal deadlines, "
+            "production outages). Do not over-use it.\n"
+            "- The Due date should be realistic based on urgency: CRITICAL = today or "
+            "next business day, HIGH = within 1-2 days, "
             'MEDIUM = within a week, LOW = within 2 weeks. Use "none" only if truly '
             "no deadline applies.\n"
             "- The reply strategy must be a concrete, ordered sequence of communication "

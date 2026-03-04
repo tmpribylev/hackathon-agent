@@ -10,7 +10,7 @@ from notion_client import Client
 
 load_dotenv()
 
-_PRIORITY_TAG_RE = re.compile(r"\[(HIGH|MEDIUM|LOW)\]\s*")
+_PRIORITY_TAG_RE = re.compile(r"\[(CRITICAL|HIGH|MEDIUM|LOW)\]\s*")
 
 
 class NotionClient:
