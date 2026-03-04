@@ -1,6 +1,8 @@
-# Email Analyzer from Google Sheets
+# Email Analyzer
 
-Reads email rows from a Google Sheet, analyzes each one with Claude (summary, category, action items, reply strategy), writes the results back to the sheet, prints a color-coded table to the console, and optionally pushes action items to a Notion database.
+Analyzes emails from a Google Sheet using Claude — produces summaries, categories, action items, and reply strategies. Results are written back to the sheet, displayed in a color-coded console table, and optionally pushed to Notion.
+
+Includes a **Telegram bot** for interactive browsing, chatting about analyzed emails, generating draft replies, and saving them directly as **Gmail drafts**.
 
 ## Prerequisites
 
@@ -8,16 +10,19 @@ Reads email rows from a Google Sheet, analyzes each one with Claude (summary, ca
 - A Google Cloud project with the **Google Sheets API** enabled
 - An **Anthropic API key**
 - *(Optional)* A Notion internal integration for action-item tracking
+- *(Optional)* A Telegram bot token for the interactive bot
+- *(Optional)* Gmail API enabled for draft creation from the Telegram bot
 
 ---
 
 ## 1. Google Cloud setup
 
-### 1a. Enable the Sheets API
+### 1a. Enable APIs
 
 1. Go to [console.cloud.google.com](https://console.cloud.google.com) and select (or create) a project.
 2. Navigate to **APIs & Services → Library**.
-3. Search for **Google Sheets API** and click **Enable**.
+3. Enable **Google Sheets API**.
+4. *(Optional)* Enable **Gmail API** — required for the "Save as Gmail Draft" feature.
 
 ### 1b. Create OAuth 2.0 credentials
 
@@ -27,7 +32,13 @@ Reads email rows from a Google Sheet, analyzes each one with Claude (summary, ca
 4. Click **Create**, then **Download JSON**.
 5. Rename the downloaded file to `credentials.json` and place it in the project root.
 
-> The first time you run the tool, a browser window will open for you to grant access. A `token.json` file is then cached so subsequent runs skip this step.
+### 1c. Update OAuth consent screen (if using Gmail)
+
+1. Go to **APIs & Services → OAuth consent screen → Data access**
+2. Add scope: `https://www.googleapis.com/auth/gmail.compose`
+3. Click **Save**
+
+> The same `credentials.json` file is shared by Sheets and Gmail. Each service gets its own cached token (`token.json` for Sheets, `gmail_token.json` for Gmail).
 
 ---
 
@@ -39,9 +50,16 @@ Copy the template and fill in your values:
 ANTHROPIC_API_KEY=your-api-key-here
 ANTHROPIC_BASE_URL=https://api.anthropic.com   # optional, change only if using a proxy
 
-# Notion (optional — for pushing action items)
+# Google Sheets
+SPREADSHEET_ID=your-spreadsheet-id
+
+# Notion (optional — for pushing action items and storing email analyses)
 NOTION_TOKEN=your-notion-internal-integration-token
 NOTION_ACTION_ITEMS_DB_ID=your-notion-database-id
+NOTION_EMAILS_DB_ID=your-notion-emails-database-id
+
+# Telegram bot (optional)
+TELEGRAM_BOT_TOKEN=your-telegram-bot-token
 ```
 
 ---
@@ -79,8 +97,8 @@ Columns can be in any order. The tool detects their positions from the header ro
 
 | Sender | Date | Subject | Body/Snippet |
 |---|---|---|---|
-| alice@example.com | 2024-01-10 | Login issue | I can't log in on mobile… |
-| bob@vendor.com | 2024-01-11 | Q1 pricing | We'd like to offer a 15% discount… |
+| alice@example.com | 2024-01-10 | Login issue | I can't log in on mobile... |
+| bob@vendor.com | 2024-01-11 | Q1 pricing | We'd like to offer a 15% discount... |
 
 Four new columns — **Summary**, **Category**, **Action Items**, and **Reply Strategy** — are written immediately after the last existing column (or reuse existing columns if a "Summary" header is already present).
 
@@ -106,10 +124,15 @@ Notion integration pushes action items extracted from emails into a Notion datab
 
 ```
 NOTION_TOKEN=ntn_...
-NOTION_ACTION_ITEMS_DB_ID=319e46034062803fb038fd948abb83f9
+NOTION_ACTION_ITEMS_DB_ID=your-notion-database-id
+NOTION_EMAILS_DB_ID=your-notion-emails-database-id
 ```
 
-The database ID is the 32-character hex string in the database URL.
+The database ID is the 32-character hex string in the database URL:
+
+```
+https://www.notion.so/THIS_PART_IS_THE_ID?v=THIS_PART_IS_NOT_THE_ID_BUT_THE_VIEW
+```
 
 ### Expected database properties
 
@@ -123,6 +146,8 @@ The database ID is the 32-character hex string in the database URL.
 
 ## 6. Run
 
+### CLI mode
+
 ```bash
 python main.py <SPREADSHEET_ID>
 ```
@@ -135,9 +160,50 @@ https://docs.google.com/spreadsheets/d/THIS_PART_IS_THE_ID/edit
 
 If `NOTION_TOKEN` and `NOTION_ACTION_ITEMS_DB_ID` are set in `.env`, action items are automatically pushed to Notion after analysis.
 
+### Telegram bot mode
+
+```bash
+python bot.py
+```
+
+Requires `TELEGRAM_BOT_TOKEN` and `SPREADSHEET_ID` in `.env`.
+
 ---
 
-## 7. Console output
+## 7. Telegram bot
+
+The Telegram bot provides an interactive interface for email analysis.
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `/analyze` | Run email analysis pipeline |
+| `/load` | Load previous analyses from Notion |
+| `/emails` | Browse analyzed emails with pagination |
+| `/actions` | Show all action items |
+| `/reset` | Clear chat history |
+| `/help` | Show help message |
+
+### Features
+
+- **Email browsing** — Paginated list of analyzed emails with inline keyboard navigation
+- **Detail view** — View full email analysis: summary, category, action items, reply strategy
+- **Draft reply generation** — Generate a professional reply using Claude, based on the email context and reply strategy
+- **Save as Gmail Draft** — One-click button to save the generated reply as a draft in your Gmail inbox (requires Gmail API setup)
+- **Free-text chat** — Send any message to chat about the analyzed emails with full conversation history
+
+### Gmail draft flow
+
+1. Open an email → tap **"Generate Draft Reply"** → Claude generates a reply
+2. Tap **"Save as Gmail Draft"** → the reply is saved as a draft in Gmail, addressed to the original sender with a `Re:` subject
+3. Open Gmail to review, edit, and send
+
+> If Gmail credentials are not configured, the bot works normally — the "Save as Gmail Draft" button simply won't appear.
+
+---
+
+## 8. Console output
 
 ```
 #     Category    Sender                    Date          Subject
@@ -169,7 +235,7 @@ Priority colors: **[HIGH]** Red, **[MEDIUM]** Yellow, **[LOW]** Green.
 
 ---
 
-## 8. Output written to the sheet
+## 9. Output written to the sheet
 
 | Column | Header | Content |
 |---|---|---|
@@ -182,71 +248,40 @@ Already-processed rows (those with an existing Summary value) are skipped on re-
 
 ---
 
-## Gmail Connector
-
-Standalone Gmail connector for creating draft messages.
-
-### 1. Enable Gmail API
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) (same project as Sheets)
-2. Navigate to **APIs & Services → Library**
-3. Search for **Gmail API** and click **Enable**
-
-### 2. Update OAuth Consent Screen
-
-1. Go to **APIs & Services → OAuth consent screen → Data access**
-2. Add scope: `https://www.googleapis.com/auth/gmail.compose`
-3. Click **Save**
-
-> You can use the same `credentials.json` file — just add the Gmail API scope.
-
-### 3. Usage
-
-```python
-from src.gmail.client import GmailClient
-
-# Initialize (first run opens browser for OAuth)
-gmail = GmailClient()
-
-# Create a draft
-draft_id = gmail.create_draft(
-    message="Hello, this is the email body.",
-    recipient="example@example.com",
-    subject="Test Draft"
-)
-
-print(f"Draft created with ID: {draft_id}")
-```
-
-**Token caching**: After first authentication, token saved to `gmail_token.json` for future use.
-
-> To re-authenticate, delete `gmail_token.json` and run again.
-
----
-
 ## Project structure
 
 ```
 .
-├── main.py                    # CLI entry point
+├── main.py                        # CLI entry point
+├── bot.py                         # Telegram bot entry point
 ├── src/
-│   ├── config.py              # Config dataclass, loads .env
+│   ├── config.py                  # Config dataclass, loads .env, all constants
+│   ├── logger.py                  # Logging setup (daily log files)
 │   ├── llm/
-│   │   └── client.py          # LLMClient (Anthropic SDK wrapper)
+│   │   └── client.py              # LLMClient (Anthropic SDK wrapper)
 │   ├── sheets/
-│   │   └── client.py          # SheetsClient (Google Sheets auth + read/write)
+│   │   └── client.py              # SheetsClient (Google Sheets auth + read/write)
 │   ├── notion/
-│   │   └── client.py          # NotionClient (internal integration + action item writer)
+│   │   └── client.py              # NotionClient (action items + email analyses)
+│   ├── gmail/
+│   │   └── client.py              # GmailClient (Gmail draft creation)
+│   ├── agents/
+│   │   └── email_analyzer.py      # EmailAnalyzer (prompt, parsing, orchestration)
 │   ├── console/
-│   │   └── renderer.py        # EmailTableRenderer (ANSI-coloured console output)
-│   └── agents/
-│       └── email_analyzer.py  # EmailAnalyzer (prompt, parsing, orchestration)
+│   │   └── renderer.py            # EmailTableRenderer (ANSI-coloured console output)
+│   └── telegram/
+│       ├── handlers.py            # Telegram command & callback handlers
+│       ├── service.py             # EmailBotService (business logic layer)
+│       ├── context_store.py       # In-memory email data store
+│       ├── keyboards.py           # Inline keyboard builders
+│       └── formatters.py          # Message formatting utilities
 ├── requirements.txt
-├── pyproject.toml             # Black & Pylint config
-├── .env                       # API keys (do not commit)
-├── .env.example               # Template for .env
-├── credentials.json           # Google OAuth client secret (do not commit)
-├── token.json                 # Cached Google OAuth token, auto-generated (do not commit)
+├── pyproject.toml                 # Black & Pylint config
+├── .env                           # API keys (do not commit)
+├── .env.example                   # Template for .env
+├── credentials.json               # Google OAuth client secret (do not commit)
+├── token.json                     # Cached Sheets OAuth token (do not commit)
+├── gmail_token.json               # Cached Gmail OAuth token (do not commit)
 └── .gitignore
 ```
 
@@ -263,3 +298,12 @@ print(f"Draft created with ID: {draft_id}")
 | Token expired / auth loop | Delete `token.json` and re-run to re-authenticate |
 | `NOTION_TOKEN must be set` | Add your Notion internal integration token to `.env` |
 | `Could not find database with ID` | Share the Notion database with your integration (step 5b) |
+| `TELEGRAM_BOT_TOKEN not set` | Add your bot token to `.env` (get one from @BotFather) |
+| `Gmail not configured` | Enable Gmail API and add the compose scope (step 1a/1c) |
+| Gmail re-auth needed | Delete `gmail_token.json` and restart the bot |
+
+---
+
+## Logging
+
+All modules log via Python's `logging` module. Log files are written daily to `logs/YYYY-MM-DD.log`. No logs are printed to the console — console output uses `print()` directly.
