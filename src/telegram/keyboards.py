@@ -69,11 +69,14 @@ def strategy_keyboard(row_index: int) -> InlineKeyboardMarkup:
     )
 
 
-def draft_reply_keyboard(row_index: int) -> InlineKeyboardMarkup:
-    """Regenerate / Back buttons shown after draft reply."""
-    return InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("Regenerate", callback_data=f"draft:{row_index}")],
-            [InlineKeyboardButton("\u00ab Back", callback_data=f"view:{row_index}")],
-        ]
-    )
+def draft_reply_keyboard(row_index: int, gmail_enabled: bool = False) -> InlineKeyboardMarkup:
+    """Regenerate / Save to Gmail / Back buttons shown after draft reply."""
+    rows = [
+        [InlineKeyboardButton("Regenerate", callback_data=f"draft:{row_index}")],
+    ]
+    if gmail_enabled:
+        rows.append(
+            [InlineKeyboardButton("Save as Gmail Draft", callback_data=f"gmail_draft:{row_index}")]
+        )
+    rows.append([InlineKeyboardButton("\u00ab Back", callback_data=f"view:{row_index}")])
+    return InlineKeyboardMarkup(rows)

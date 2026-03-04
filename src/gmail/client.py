@@ -9,13 +9,11 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+from src.config import GMAIL_TOKEN_PATH, GMAIL_SCOPES, CREDS_PATH
+
 
 class GmailClient:
     """Gmail API client for creating draft messages."""
-
-    TOKEN_PATH = "gmail_token.json"
-    CREDS_PATH = "credentials.json"
-    SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]
 
     def __init__(self) -> None:
         """Initialize Gmail client and authenticate."""
@@ -24,24 +22,24 @@ class GmailClient:
     def _authenticate(self):
         """Authenticate with Gmail API using OAuth 2.0."""
         creds = None
-        if Path(self.TOKEN_PATH).exists():
-            creds = Credentials.from_authorized_user_file(self.TOKEN_PATH, self.SCOPES)
+        if Path(GMAIL_TOKEN_PATH).exists():
+            creds = Credentials.from_authorized_user_file(GMAIL_TOKEN_PATH, GMAIL_SCOPES)
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
-                if not Path(self.CREDS_PATH).exists():
+                if not Path(CREDS_PATH).exists():
                     raise ValueError(
-                        f"{self.CREDS_PATH} not found. "
+                        f"{CREDS_PATH} not found. "
                         "Download it from Google Cloud Console."
                     )
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    self.CREDS_PATH, self.SCOPES
+                    CREDS_PATH, GMAIL_SCOPES
                 )
                 creds = flow.run_local_server(port=0)
 
-            with open(self.TOKEN_PATH, "w") as f:
+            with open(GMAIL_TOKEN_PATH, "w") as f:
                 f.write(creds.to_json())
 
         return build("gmail", "v1", credentials=creds)

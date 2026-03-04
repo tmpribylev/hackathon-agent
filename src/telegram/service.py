@@ -8,6 +8,7 @@ from src.config import TG_REPLY_DRAFT_MAX_TOKENS, TG_CHAT_MAX_TOKENS, TG_CHAT_MA
 from src.llm.client import LLMClient
 from src.agents.email_analyzer import EmailAnalyzer, AnalysisResult
 from src.notion.client import NotionClient
+from src.gmail.client import GmailClient
 from src.telegram.context_store import AnalyzedEmail, EmailContextStore
 
 log = logging.getLogger(__name__)
@@ -20,11 +21,13 @@ class EmailBotService:
         llm: LLMClient,
         notion: NotionClient | None = None,
         notion_emails_db_id: str | None = None,
+        gmail: GmailClient | None = None,
     ) -> None:
         self._analyzer = analyzer
         self._llm = llm
         self._notion = notion
         self._notion_emails_db_id = notion_emails_db_id
+        self._gmail = gmail
         self.store = EmailContextStore()
         self._chat_histories: dict[int, list[dict]] = {}
 
@@ -108,6 +111,29 @@ class EmailBotService:
         draft = self._llm.complete(prompt, max_tokens=TG_REPLY_DRAFT_MAX_TOKENS)
         self.store.set_draft_reply(row_index, draft)
         return draft
+
+    # ── gmail draft ────────────────────────────────────────────────────────────
+
+    def save_draft_to_gmail(self, row_index: int) -> str:
+        """Save the generated draft reply as a Gmail draft.
+
+        Returns the Gmail draft ID.
+        """
+        if not self._gmail:
+            raise RuntimeError("Gmail is not configured.")
+
+        email = self.store.get(row_index)
+        if not email:
+            raise ValueError("Email not found.")
+        if not email.draft_reply:
+            raise ValueError("No draft reply generated yet. Generate one first.")
+
+        subject = f"Re: {email.subject}" if not email.subject.startswith("Re:") else email.subject
+        return self._gmail.create_draft(
+            message=email.draft_reply,
+            recipient=email.sender,
+            subject=subject,
+        )
 
     # ── chat ──────────────────────────────────────────────────────────────────
 

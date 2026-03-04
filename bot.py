@@ -20,6 +20,7 @@ from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
 from src.agents.email_analyzer import EmailAnalyzer
 from src.notion.client import NotionClient
+from src.gmail.client import GmailClient
 from src.telegram.service import EmailBotService
 from src.telegram.handlers import (
     start_handler,
@@ -63,6 +64,14 @@ def main() -> None:
         notion = NotionClient(config.notion_token)
         print("Connected to Notion.")
 
+    gmail = None
+    try:
+        gmail = GmailClient()
+        print("Connected to Gmail.")
+    except Exception as exc:
+        log.warning("Gmail not available: %s", exc)
+        print(f"Gmail not configured (drafts disabled): {exc}")
+
     llm = LLMClient(config)
     renderer = EmailTableRenderer()
     analyzer = EmailAnalyzer(llm, sheets, renderer, notion, config.notion_db_id)
@@ -72,6 +81,7 @@ def main() -> None:
         llm=llm,
         notion=notion,
         notion_emails_db_id=config.notion_emails_db_id,
+        gmail=gmail,
     )
 
     # Build Telegram application

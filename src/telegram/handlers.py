@@ -193,15 +193,46 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         try:
             draft = await asyncio.to_thread(service.generate_reply_draft, row_index)
             text = format_draft_reply(email, draft)
+            gmail_enabled = service._gmail is not None
             for chunk in split_message(text):
                 await query.edit_message_text(
-                    chunk, parse_mode="HTML", reply_markup=draft_reply_keyboard(row_index)
+                    chunk,
+                    parse_mode="HTML",
+                    reply_markup=draft_reply_keyboard(row_index, gmail_enabled=gmail_enabled),
                 )
         except Exception as exc:
             log.error("Draft generation failed: %s", exc)
             await query.edit_message_text(
                 "Failed to generate draft. Try again.",
                 reply_markup=email_detail_keyboard(row_index),
+            )
+
+    elif prefix == "gmail_draft":
+        row_index = int(value)
+        email = service.store.get(row_index)
+        if not email:
+            await query.edit_message_text("Email not found.")
+            return
+        await query.edit_message_text("Saving to Gmail drafts\u2026")
+        try:
+            draft_id = await asyncio.to_thread(service.save_draft_to_gmail, row_index)
+            text = (
+                f"Draft saved to Gmail!\n"
+                f"<b>To:</b> {_esc(email.sender)}\n"
+                f"<b>Subject:</b> Re: {_esc(email.subject)}\n"
+                f"<b>Draft ID:</b> <code>{_esc(draft_id)}</code>"
+            )
+            await query.edit_message_text(
+                text,
+                parse_mode="HTML",
+                reply_markup=email_detail_keyboard(row_index),
+            )
+        except Exception as exc:
+            log.error("Gmail draft save failed: %s", exc)
+            await query.edit_message_text(
+                f"Failed to save Gmail draft: {_esc(str(exc))}",
+                parse_mode="HTML",
+                reply_markup=draft_reply_keyboard(row_index, gmail_enabled=True),
             )
 
     elif prefix == "page":

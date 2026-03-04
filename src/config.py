@@ -39,6 +39,10 @@ TOKEN_PATH = "token.json"
 CREDS_PATH = "credentials.json"
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
+# ── Gmail ────────────────────────────────────────────────────────────────────
+GMAIL_TOKEN_PATH = "gmail_token.json"
+GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]
+
 
 @dataclass
 class Config:
