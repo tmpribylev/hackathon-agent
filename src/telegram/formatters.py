@@ -2,13 +2,30 @@
 
 from __future__ import annotations
 
-from src.config import TG_MAX_MESSAGE_LENGTH
+import math
+
+from src.config import TG_MAX_MESSAGE_LENGTH, TG_EMAILS_PER_PAGE
 from src.telegram.context_store import AnalyzedEmail
 
 
 def format_email_summary(email: AnalyzedEmail) -> str:
     """One-line summary for list views."""
     return f"[{email.category}] {email.subject} — {email.sender}"
+
+
+def format_email_list_page(emails: list[AnalyzedEmail], page: int = 0) -> str:
+    """Format a page of emails for the list view."""
+    total_pages = max(1, math.ceil(len(emails) / TG_EMAILS_PER_PAGE))
+    page = max(0, min(page, total_pages - 1))
+
+    start = page * TG_EMAILS_PER_PAGE
+    end = start + TG_EMAILS_PER_PAGE
+    page_emails = emails[start:end]
+
+    lines = [format_email_summary(e) for e in page_emails]
+    header = f"<b>Analyzed Emails ({len(emails)} total):</b>\n\n"
+    body = "\n".join(f"{start + i + 1}. {_esc(l)}" for i, l in enumerate(lines))
+    return header + body
 
 
 def format_email_detail(email: AnalyzedEmail) -> str:

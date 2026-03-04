@@ -22,6 +22,7 @@ TG_MAX_MESSAGE_LENGTH = 4096
 TG_REPLY_DRAFT_MAX_TOKENS = 2048
 TG_CHAT_MAX_TOKENS = 1024
 TG_CHAT_MAX_HISTORY = 20
+TG_EMAILS_PER_PAGE = 5
 
 # ── Priority levels ───────────────────────────────────────────────────────────
 PRIORITY_LEVELS = ("CRITICAL", "HIGH", "MEDIUM", "LOW")

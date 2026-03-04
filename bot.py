@@ -4,6 +4,7 @@
 import logging
 import sys
 
+from telegram import BotCommand
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -87,6 +88,18 @@ def main() -> None:
     app.add_handler(CommandHandler("reset", reset_handler))
     app.add_handler(CallbackQueryHandler(callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+
+    async def post_init(application) -> None:
+        await application.bot.set_my_commands([
+            BotCommand("analyze", "Run email analysis pipeline"),
+            BotCommand("load", "Load previous analyses from Notion"),
+            BotCommand("emails", "Browse analyzed emails"),
+            BotCommand("actions", "Show all action items"),
+            BotCommand("reset", "Clear chat history"),
+            BotCommand("help", "Show help message"),
+        ])
+
+    app.post_init = post_init
 
     print("Bot is running. Press Ctrl+C to stop.")
     log.info("Bot polling started")

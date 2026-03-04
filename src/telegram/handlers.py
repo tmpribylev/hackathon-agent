@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 
 from src.telegram.service import EmailBotService
 from src.telegram.formatters import (
-    format_email_summary,
+    format_email_list_page,
     format_email_detail,
     format_action_items_message,
     format_draft_reply,
@@ -85,13 +85,11 @@ async def emails_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("No emails loaded. Use /analyze or /load first.")
         return
 
-    lines = [format_email_summary(e) for e in emails]
-    text = "<b>Analyzed Emails:</b>\n\n" + "\n".join(
-        f"{i+1}. {_esc(l)}" for i, l in enumerate(lines)
-    )
+    page = 0
+    text = format_email_list_page(emails, page)
     for chunk in split_message(text):
         await update.message.reply_text(
-            chunk, parse_mode="HTML", reply_markup=email_list_keyboard(emails)
+            chunk, parse_mode="HTML", reply_markup=email_list_keyboard(emails, page)
         )
 
 
@@ -206,16 +204,28 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 reply_markup=email_detail_keyboard(row_index),
             )
 
+    elif prefix == "page":
+        page = int(value)
+        emails = service.store.all_emails()
+        if not emails:
+            await query.edit_message_text("No emails loaded.")
+            return
+        text = format_email_list_page(emails, page)
+        for chunk in split_message(text):
+            await query.edit_message_text(
+                chunk, parse_mode="HTML", reply_markup=email_list_keyboard(emails, page)
+            )
+
+    elif prefix == "noop":
+        return
+
     elif prefix == "back" and value == "list":
         emails = service.store.all_emails()
         if not emails:
             await query.edit_message_text("No emails loaded.")
             return
-        lines = [format_email_summary(e) for e in emails]
-        text = "<b>Analyzed Emails:</b>\n\n" + "\n".join(
-            f"{i+1}. {_esc(l)}" for i, l in enumerate(lines)
-        )
+        text = format_email_list_page(emails, 0)
         for chunk in split_message(text):
             await query.edit_message_text(
-                chunk, parse_mode="HTML", reply_markup=email_list_keyboard(emails)
+                chunk, parse_mode="HTML", reply_markup=email_list_keyboard(emails, 0)
             )

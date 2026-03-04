@@ -2,22 +2,42 @@
 
 from __future__ import annotations
 
+import math
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+from src.config import TG_EMAILS_PER_PAGE
 from src.telegram.context_store import AnalyzedEmail
 
 
-def email_list_keyboard(emails: list[AnalyzedEmail]) -> InlineKeyboardMarkup:
-    """One button per email."""
-    buttons = [
+def email_list_keyboard(emails: list[AnalyzedEmail], page: int = 0) -> InlineKeyboardMarkup:
+    """One button per email, paginated with navigation arrows."""
+    total_pages = max(1, math.ceil(len(emails) / TG_EMAILS_PER_PAGE))
+    page = max(0, min(page, total_pages - 1))
+
+    start = page * TG_EMAILS_PER_PAGE
+    end = start + TG_EMAILS_PER_PAGE
+    page_emails = emails[start:end]
+
+    buttons: list[list[InlineKeyboardButton]] = [
         [
             InlineKeyboardButton(
                 f"[{e.category}] {e.subject[:40]}",
                 callback_data=f"view:{e.row_index}",
             )
         ]
-        for e in emails
+        for e in page_emails
     ]
+
+    if total_pages > 1:
+        nav_row: list[InlineKeyboardButton] = []
+        if page > 0:
+            nav_row.append(InlineKeyboardButton("« Prev", callback_data=f"page:{page - 1}"))
+        nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav_row.append(InlineKeyboardButton("Next »", callback_data=f"page:{page + 1}"))
+        buttons.append(nav_row)
+
     return InlineKeyboardMarkup(buttons)
 
 
