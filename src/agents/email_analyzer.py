@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+
 from src.llm.client import LLMClient
 from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
@@ -24,6 +26,7 @@ class EmailAnalyzer:
         self._renderer = renderer
         self._notion = notion
         self._notion_db_id = notion_db_id
+        self._today = datetime.date.today().isoformat()
 
     # ── public entry point ────────────────────────────────────────────────────
 
@@ -62,13 +65,28 @@ class EmailAnalyzer:
 
         if to_process > 0 and self._notion and self._notion_db_id:
             total_items = 0
-            for result in results:
+            failed = 0
+            for i, result in enumerate(results):
                 if result is None:
                     continue
-                _, _, action_items, _ = result
+                _, category, action_items, _ = result
+                row = rows[i]
+                source = f"{row[col['subject']]} \u2014 {row[col['sender']]}"
                 if action_items:
-                    total_items += self._notion.write_action_items(self._notion_db_id, action_items)
-            print(f"Pushed {total_items} action item(s) to Notion.")
+                    try:
+                        total_items += self._notion.write_action_items(
+                            self._notion_db_id,
+                            action_items,
+                            category=category,
+                            source_email=source,
+                        )
+                    except Exception as exc:
+                        failed += 1
+                        print(f"\n  \u26a0 Notion write failed for row {i + 2}: {exc}")
+            msg = f"Pushed {total_items} action item(s) to Notion."
+            if failed:
+                msg += f" ({failed} failed)"
+            print(msg)
 
         self._renderer.render(rows, results, col["sender"], col["date"], col["subject"])
         last_col = SheetsClient.col_to_letter(out_start_col + 3)
@@ -112,20 +130,28 @@ class EmailAnalyzer:
             "Category: <exactly one of: Support, Sales, Spam, Internal, Finance, "
             "Legal, Other>\n"
             "Action Items:\n"
-            "- [HIGH] <urgent action if any>\n"
-            "- [MEDIUM] <normal-priority action if any>\n"
-            "- [LOW] <low-priority action if any>\n"
+            "- [HIGH] <short action title>\n"
+            "  Details: <detailed explanation of what needs to be done and why>\n"
+            '  Due: <YYYY-MM-DD suggested deadline based on urgency, or "none">\n'
+            "- [MEDIUM] <short action title>\n"
+            "  Details: <detailed explanation>\n"
+            '  Due: <YYYY-MM-DD or "none">\n'
             "Reply Strategy:\n"
             "1. <first step>\n"
             "2. <second step>\n"
             "3. <third step \u2014 add more steps as needed>\n\n"
             "Rules:\n"
             "- Omit action item lines that do not apply (do not write empty bullets).\n"
+            "- Each action item MUST have a Details line and a Due line.\n"
+            "- The Due date should be realistic based on urgency: HIGH = within 1-2 days, "
+            'MEDIUM = within a week, LOW = within 2 weeks. Use "none" only if truly '
+            "no deadline applies.\n"
             "- The reply strategy must be a concrete, ordered sequence of communication "
             "steps (e.g. acknowledge, resolve urgent items, start a side thread, "
             "request a call, reply with minutes and final decision). Tailor the steps "
             "to this specific email.\n"
             "- No extra commentary outside the four sections.\n\n"
+            f"Today's date: {self._today}\n"
             f"From: {sender}\n"
             f"Date: {date}\n"
             f"Subject: {subject}\n"
@@ -137,21 +163,19 @@ class EmailAnalyzer:
     ) -> tuple[str, str, str, str]:
         """Return (summary, category, action_items, reply_strategy)."""
         prompt = self._build_prompt(sender, date, subject, body)
-        text = self._llm.complete(prompt)
+        text = self._llm.complete(prompt, max_tokens=2048)
 
         def extract_section(label: str, next_label: str | None) -> str:
-            start_marker = f"{label}\n"
-            start = text.find(start_marker)
+            start = text.find(label)
             if start == -1:
                 return ""
-            start += len(start_marker)
+            start += len(label)
             if next_label:
-                end = text.find(f"\n{next_label}\n", start)
-                if end == -1:
-                    end = text.find(f"\n{next_label}:", start)
+                end = text.find(f"\n{next_label}", start)
             else:
                 end = -1
-            return text[start:end].strip() if end != -1 else text[start:].strip()
+            content = text[start:end] if end != -1 else text[start:]
+            return content.strip()
 
         summary = ""
         category = "Other"
