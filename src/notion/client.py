@@ -3,24 +3,17 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 
-from dotenv import load_dotenv
 from notion_client import Client
+
+from src.config import DEFAULT_CATEGORY, PRIORITY_TAG_RE, DEFAULT_PRIORITY
 
 log = logging.getLogger(__name__)
 
-load_dotenv()
-
-_PRIORITY_TAG_RE = re.compile(r"\[(CRITICAL|HIGH|MEDIUM|LOW)\]\s*")
-
 
 class NotionClient:
-    def __init__(self) -> None:
-        token = os.getenv("NOTION_TOKEN")
-        if not token:
-            raise RuntimeError("NOTION_TOKEN must be set in .env.")
+    def __init__(self, token: str) -> None:
         self._client = Client(auth=token)
 
     def write_action_items(
@@ -28,7 +21,7 @@ class NotionClient:
         database_id: str,
         action_items: str,
         *,
-        category: str = "Other",
+        category: str = DEFAULT_CATEGORY,
         source_email: str = "",
     ) -> int:
         """Parse structured action items and create a Notion page for each one.
@@ -50,9 +43,13 @@ class NotionClient:
                 "Category": {"select": {"name": category}},
             }
             if item["details"]:
-                properties["Details"] = {"rich_text": [{"text": {"content": item["details"][:2000]}}]}
+                properties["Details"] = {
+                    "rich_text": [{"text": {"content": item["details"][:2000]}}]
+                }
             if source_email:
-                properties["Source Email"] = {"rich_text": [{"text": {"content": source_email[:2000]}}]}
+                properties["Source Email"] = {
+                    "rich_text": [{"text": {"content": source_email[:2000]}}]
+                }
             if item["due"]:
                 properties["Due Date"] = {"date": {"start": item["due"]}}
 
@@ -82,11 +79,11 @@ class NotionClient:
                 if current:
                     items.append(current)
                 title = line.lstrip("- ")
-                priority = "Medium"
-                match = _PRIORITY_TAG_RE.search(title)
+                priority = DEFAULT_PRIORITY
+                match = PRIORITY_TAG_RE.search(title)
                 if match:
                     priority = match.group(1).capitalize()
-                    title = _PRIORITY_TAG_RE.sub("", title).strip()
+                    title = PRIORITY_TAG_RE.sub("", title).strip()
                 current = {
                     "title": title,
                     "priority": priority,

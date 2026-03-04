@@ -11,11 +11,10 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+from src.config import TOKEN_PATH, CREDS_PATH, GOOGLE_SCOPES
+
 
 class SheetsClient:
-    TOKEN_PATH = "token.json"
-    CREDS_PATH = "credentials.json"
-    SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
     def __init__(self, spreadsheet_id: str) -> None:
         self._spreadsheet_id = spreadsheet_id
@@ -24,22 +23,22 @@ class SheetsClient:
     def _authenticate(self):
         log.info("Authenticating with Google Sheets API")
         creds = None
-        if Path(self.TOKEN_PATH).exists():
-            creds = Credentials.from_authorized_user_file(self.TOKEN_PATH, self.SCOPES)
+        if Path(TOKEN_PATH).exists():
+            creds = Credentials.from_authorized_user_file(TOKEN_PATH, GOOGLE_SCOPES)
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 log.info("Refreshing expired credentials")
                 creds.refresh(Request())
             else:
-                if not Path(self.CREDS_PATH).exists():
+                if not Path(CREDS_PATH).exists():
                     raise ValueError(
-                        f"{self.CREDS_PATH} not found. "
+                        f"{CREDS_PATH} not found. "
                         "Download it from Google Cloud Console and place it here."
                     )
                 log.info("Running OAuth flow for new credentials")
-                flow = InstalledAppFlow.from_client_secrets_file(self.CREDS_PATH, self.SCOPES)
+                flow = InstalledAppFlow.from_client_secrets_file(CREDS_PATH, GOOGLE_SCOPES)
                 creds = flow.run_local_server(port=0)
-            with open(self.TOKEN_PATH, "w") as f:
+            with open(TOKEN_PATH, "w") as f:
                 f.write(creds.to_json())
         log.info("Google Sheets authentication successful")
         return build("sheets", "v4", credentials=creds)
