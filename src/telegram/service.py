@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from src.config import TG_REPLY_DRAFT_MAX_TOKENS, TG_CHAT_MAX_TOKENS, TG_CHAT_MAX_HISTORY
+from src.prompts import DRAFT_REPLY_PROMPT
 from src.llm.client import LLMClient
 from src.agents.email_analyzer import EmailAnalyzer, AnalysisResult
 from src.notion.client import NotionClient
@@ -102,17 +103,12 @@ class EmailBotService:
             log.warning("generate_reply_draft: email not found for row_index=%d", row_index)
             return "Email not found."
 
-        prompt = (
-            "Write a professional email reply based on the original email and the "
-            "reply strategy below. Write only the reply body — no subject line, "
-            "no commentary.\n\n"
-            f"Original email:\n"
-            f"From: {email.sender}\n"
-            f"Date: {email.date}\n"
-            f"Subject: {email.subject}\n"
-            f"Body: {email.body}\n\n"
-            f"Reply Strategy:\n{email.reply_strategy}\n\n"
-            "Draft reply:"
+        prompt = DRAFT_REPLY_PROMPT.format(
+            sender=email.sender,
+            date=email.date,
+            subject=email.subject,
+            body=email.body,
+            reply_strategy=email.reply_strategy,
         )
         log.info("Generating draft reply for row_index=%d subject=%s", row_index, email.subject)
         draft = self._llm.complete(prompt, max_tokens=TG_REPLY_DRAFT_MAX_TOKENS)

@@ -7,7 +7,8 @@ import logging
 import re
 from dataclasses import dataclass
 
-from src.config import CATEGORIES, DEFAULT_CATEGORY, EMAIL_ANALYSIS_MAX_TOKENS
+from src.config import CATEGORIES, DEFAULT_CATEGORY, EMAIL_ANALYSIS_MAX_TOKENS, SENDER_SUMMARY_MAX_TOKENS
+from src.prompts import EMAIL_ANALYSIS_PROMPT, SENDER_SUMMARY_PROMPT
 from src.llm.client import LLMClient
 from src.sheets.client import SheetsClient
 from src.console.renderer import EmailTableRenderer
@@ -83,9 +84,11 @@ class EmailAnalyzer:
             subject = row[col["subject"]]
             body = row[col["body"]]
             log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
-            result = self._analyze_email(sender, date, subject, body)
-            log.info("Result — category=%s, summary=%s", result[1], result[0])
-            raw_results.append(result)
+            summary, category, action_items, reply_strategy, _, _ = (
+                self._analyze_email(sender, date, subject, body)
+            )
+            log.info("Result — category=%s, summary=%s", category, summary)
+            raw_results.append((summary, category, action_items, reply_strategy))
             analysis_results.append(
                 AnalysisResult(
                     row_index=i,
@@ -93,10 +96,10 @@ class EmailAnalyzer:
                     date=date,
                     subject=subject,
                     body=body,
-                    summary=result[0],
-                    category=result[1],
-                    action_items=result[2],
-                    reply_strategy=result[3],
+                    summary=summary,
+                    category=category,
+                    action_items=action_items,
+                    reply_strategy=reply_strategy,
                 )
             )
 
@@ -137,7 +140,7 @@ class EmailAnalyzer:
             body = row[col["body"]]
             log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
             print(f"  [{processed}/{to_process}] {subject[:60]}", end="\r", flush=True)
-            summary, category, action_items, reply_strategy, email_address = (
+            summary, category, action_items, reply_strategy, email_address, sender_summary = (
                 self._analyze_email(sender, date, subject, body)
             )
             log.info("Result — category=%s, summary=%s", category, summary)
@@ -150,7 +153,7 @@ class EmailAnalyzer:
                         self._notion_sender_db_id,
                         email_address,
                         sender,
-                        summary,
+                        sender_summary,
                         date,
                     )
                 except Exception as exc:
@@ -229,7 +232,7 @@ class EmailAnalyzer:
             return ""
 
         return "Previous interaction context:\n" + "\n".join(parts) + "\n\n"
-      
+
     def _push_action_items_to_notion(
         self,
         rows: list[list[str]],
@@ -265,67 +268,44 @@ class EmailAnalyzer:
             if failed:
                 msg += f" ({failed} failed)"
             print(msg)
-      
+
     def _build_prompt(self, sender: str, date: str, subject: str, body: str, context: str = "") -> str:
-        return (
-            "You are an email triage assistant. Analyze the email and respond using "
-            "EXACTLY this format (keep the section headers verbatim, no extra blank "
-            "lines between headers and content):\n\n"
-            "Summary: <one sentence describing what the email is about>\n"
-            "Category: <exactly one of: Support, Sales, Spam, Internal, Finance, "
-            "Legal, Other>\n"
-            "Action Items:\n"
-            "- [CRITICAL] <short action title>\n"
-            "  Details: <detailed explanation of what needs to be done and why>\n"
-            '  Due: <YYYY-MM-DD suggested deadline based on urgency, or "none">\n'
-            "- [HIGH] <short action title>\n"
-            "  Details: <detailed explanation>\n"
-            '  Due: <YYYY-MM-DD or "none">\n'
-            "- [MEDIUM] <short action title>\n"
-            "  Details: <detailed explanation>\n"
-            '  Due: <YYYY-MM-DD or "none">\n'
-            "Reply Strategy:\n"
-            "1. <first step>\n"
-            "2. <second step>\n"
-            "3. <third step \u2014 add more steps as needed>\n\n"
-            "Rules:\n"
-            "- Omit action item lines that do not apply (do not write empty bullets).\n"
-            "- Each action item MUST have a Details line and a Due line.\n"
-            "- CRITICAL is reserved for truly urgent, business-critical matters that "
-            "demand immediate action (e.g. security incidents, legal deadlines, "
-            "production outages). Do not over-use it.\n"
-            "- The Due date should be realistic based on urgency: CRITICAL = today or "
-            "next business day, HIGH = within 1-2 days, "
-            'MEDIUM = within a week, LOW = within 2 weeks. Use "none" only if truly '
-            "no deadline applies.\n"
-            "- The reply strategy must be a concrete, ordered sequence of communication "
-            "steps (e.g. acknowledge, resolve urgent items, start a side thread, "
-            "request a call, reply with minutes and final decision). Tailor the steps "
-            "to this specific email.\n"
-            "- No extra commentary outside the four sections.\n\n"
-            f"Today's date: {self._today}\n"
-            f"{context}"
-            "[CURRENT EMAIL]\n"
-            f"From: {sender}\n"
-            f"Date: {date}\n"
-            f"Subject: {subject}\n"
-            f"Body: {body}"
+        return EMAIL_ANALYSIS_PROMPT.format(
+            today=self._today,
+            context=context,
+            sender=sender,
+            date=date,
+            subject=subject,
+            body=body,
         )
+
+    def _generate_sender_summary(
+        self, sender_name: str, previous_summary: str, email_summary: str
+    ) -> str:
+        """Generate a person-focused AI summary for the sender."""
+        prompt = SENDER_SUMMARY_PROMPT.format(
+            sender_name=sender_name,
+            previous_summary=previous_summary or "None (first interaction)",
+            email_summary=email_summary,
+        )
+        return self._llm.complete(prompt, max_tokens=SENDER_SUMMARY_MAX_TOKENS)
 
     def _analyze_email(
         self, sender: str, date: str, subject: str, body: str
-    ) -> tuple[str, str, str, str, str]:
-        """Return (summary, category, action_items, reply_strategy, email_address)."""
+    ) -> tuple[str, str, str, str, str, str]:
+        """Return (summary, category, action_items, reply_strategy, email_address, sender_summary)."""
         email_address = self._extract_email_address(sender)
         context = ""
+        previous_ai_summary = ""
 
         # Lookup sender context if Notion configured
         if self._notion and self._notion_sender_db_id:
             sender_data = self._notion.get_sender(self._notion_sender_db_id, email_address)
             if sender_data:
+                previous_ai_summary = sender_data.get("ai_summary", "")
                 context = self._build_context_section(
                     sender_data.get("manual_comment", ""),
-                    sender_data.get("ai_summary", "")
+                    previous_ai_summary,
                 )
 
         prompt = self._build_prompt(sender, date, subject, body, context)
@@ -355,4 +335,6 @@ class EmailAnalyzer:
         action_items = extract_section("Action Items:", "Reply Strategy:")
         reply_strategy = extract_section("Reply Strategy:", None)
 
-        return summary, category, action_items, reply_strategy, email_address
+        sender_summary = self._generate_sender_summary(sender, previous_ai_summary, summary)
+
+        return summary, category, action_items, reply_strategy, email_address, sender_summary

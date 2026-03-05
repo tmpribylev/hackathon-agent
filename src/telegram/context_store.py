@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+from src.prompts import CHAT_SYSTEM_PROMPT_HEADER
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +69,4 @@ class EmailContextStore:
                 f"Action Items:\n{email.action_items}\n"
                 f"Reply Strategy:\n{email.reply_strategy}\n"
             )
-        return (
-            "You are an email assistant. Below are the analyzed emails. "
-            "Answer questions about them accurately and concisely.\n\n" + "\n".join(parts)
-        )
+        return CHAT_SYSTEM_PROMPT_HEADER + "\n".join(parts)

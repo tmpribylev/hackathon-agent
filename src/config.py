@@ -16,6 +16,7 @@ DEFAULT_CATEGORY = "Other"
 DEFAULT_MODEL = "claude-sonnet-4-6"
 DEFAULT_MAX_TOKENS = 1024
 EMAIL_ANALYSIS_MAX_TOKENS = 2048
+SENDER_SUMMARY_MAX_TOKENS = 256
 
 # ── Telegram bot ──────────────────────────────────────────────────────────────
 TG_MAX_MESSAGE_LENGTH = 4096
