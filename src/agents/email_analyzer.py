@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import logging
 import re
+from dataclasses import dataclass
 
 from src.config import CATEGORIES, DEFAULT_CATEGORY, EMAIL_ANALYSIS_MAX_TOKENS
 from src.llm.client import LLMClient
@@ -13,6 +14,21 @@ from src.console.renderer import EmailTableRenderer
 from src.notion.client import NotionClient
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class AnalysisResult:
+    """Structured result of a single email analysis."""
+
+    row_index: int
+    sender: str
+    date: str
+    subject: str
+    body: str
+    summary: str
+    category: str
+    action_items: str
+    reply_strategy: str
 
 
 class EmailAnalyzer:
@@ -33,25 +49,80 @@ class EmailAnalyzer:
         self._notion_sender_db_id = notion_sender_db_id
         self._today = datetime.date.today().isoformat()
 
-    # ── public entry point ────────────────────────────────────────────────────
+    # ── public entry points ───────────────────────────────────────────────────
 
-    def run(self) -> None:
+    def analyze(self) -> list[AnalysisResult]:
+        """Fetch emails from the sheet, analyze unprocessed ones, write results back.
+
+        Returns a list of AnalysisResult for every newly analyzed email.
+        """
         log.info("Fetching rows from sheet")
-        print("Fetching rows\u2026")
         headers, rows = self._sheets.fetch_rows()
         log.info("Fetched %d row(s), headers: %s", len(rows), headers)
 
-        col = self._detect_columns(headers)
-        out_summary_i, out_start_col = self._detect_output_columns(headers)
+        col = self.detect_columns(headers)
+        out_summary_i, out_start_col = self.detect_output_columns(headers)
         already_done = self._build_already_done(rows, out_summary_i)
 
         if already_done:
             log.info("Skipping %d already-processed row(s)", len(already_done))
+
+        raw_results: list[tuple[str, str, str, str] | None] = []
+        analysis_results: list[AnalysisResult] = []
+        to_process = len(rows) - len(already_done)
+        log.info("Will analyze %d email(s)", to_process)
+
+        processed = 0
+        for i, row in enumerate(rows):
+            if i in already_done:
+                raw_results.append(None)
+                continue
+            processed += 1
+            sender = row[col["sender"]]
+            date = row[col["date"]]
+            subject = row[col["subject"]]
+            body = row[col["body"]]
+            log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
+            result = self._analyze_email(sender, date, subject, body)
+            log.info("Result — category=%s, summary=%s", result[1], result[0])
+            raw_results.append(result)
+            analysis_results.append(
+                AnalysisResult(
+                    row_index=i,
+                    sender=sender,
+                    date=date,
+                    subject=subject,
+                    body=body,
+                    summary=result[0],
+                    category=result[1],
+                    action_items=result[2],
+                    reply_strategy=result[3],
+                )
+            )
+
+        if to_process > 0:
+            log.info("Writing results back to sheet")
+            self._sheets.write_results(raw_results, out_start_col)
+
+        if to_process > 0 and self._notion and self._notion_db_id:
+            self._push_action_items_to_notion(rows, raw_results, col)
+
+        return analysis_results
+
+    def run(self) -> None:
+        """CLI entry point: analyze + render console output."""
+        print("Fetching rows\u2026")
+        headers, rows = self._sheets.fetch_rows()
+
+        col = self.detect_columns(headers)
+        out_summary_i, out_start_col = self.detect_output_columns(headers)
+        already_done = self._build_already_done(rows, out_summary_i)
+
+        if already_done:
             print(f"Skipping {len(already_done)} already-processed row(s).")
 
         results: list[tuple[str, str, str, str] | None] = []
         to_process = len(rows) - len(already_done)
-        log.info("Will analyze %d email(s)", to_process)
         print(f"Analyzing {to_process} email(s) with Claude\u2026\n")
 
         processed = 0
@@ -93,31 +164,7 @@ class EmailAnalyzer:
             self._sheets.write_results(results, out_start_col)
 
         if to_process > 0 and self._notion and self._notion_db_id:
-            total_items = 0
-            failed = 0
-            for i, result in enumerate(results):
-                if result is None:
-                    continue
-                _, category, action_items, _ = result
-                row = rows[i]
-                source = f"{row[col['subject']]} \u2014 {row[col['sender']]}"
-                if action_items:
-                    try:
-                        total_items += self._notion.write_action_items(
-                            self._notion_db_id,
-                            action_items,
-                            category=category,
-                            source_email=source,
-                        )
-                    except Exception as exc:
-                        failed += 1
-                        log.error("Notion write failed for row %d: %s", i + 2, exc)
-                        print(f"\n  \u26a0 Notion write failed for row {i + 2}: {exc}")
-            log.info("Pushed %d action item(s) to Notion (%d failed)", total_items, failed)
-            msg = f"Pushed {total_items} action item(s) to Notion."
-            if failed:
-                msg += f" ({failed} failed)"
-            print(msg)
+            self._push_action_items_to_notion(rows, results, col, verbose=True)
 
         self._renderer.render(rows, results, col["sender"], col["date"], col["subject"])
         last_col = SheetsClient.col_to_letter(out_start_col + 2)
@@ -127,9 +174,10 @@ class EmailAnalyzer:
             f"Columns {SheetsClient.col_to_letter(out_start_col)}\u2013{last_col}.\n"
         )
 
-    # ── private helpers ───────────────────────────────────────────────────────
+    # ── helpers ───────────────────────────────────────────────────────────────
 
-    def _detect_columns(self, headers: list[str]) -> dict[str, int]:
+    @staticmethod
+    def detect_columns(headers: list[str]) -> dict[str, int]:
         find = SheetsClient.find_col
         return {
             "sender": find(headers, "sender", "from"),
@@ -139,7 +187,7 @@ class EmailAnalyzer:
         }
 
     @staticmethod
-    def _detect_output_columns(headers: list[str]) -> tuple[int | None, int]:
+    def detect_output_columns(headers: list[str]) -> tuple[int | None, int]:
         """Return (out_summary_index_or_None, 1_based_start_col)."""
         try:
             out_summary_i = SheetsClient.find_col(headers, "summary")
@@ -181,7 +229,43 @@ class EmailAnalyzer:
             return ""
 
         return "Previous interaction context:\n" + "\n".join(parts) + "\n\n"
-
+      
+    def _push_action_items_to_notion(
+        self,
+        rows: list[list[str]],
+        results: list[tuple[str, str, str, str] | None],
+        col: dict[str, int],
+        *,
+        verbose: bool = False,
+    ) -> None:
+        total_items = 0
+        failed = 0
+        for i, result in enumerate(results):
+            if result is None:
+                continue
+            _, category, action_items, _ = result
+            row = rows[i]
+            source = f"{row[col['subject']]} \u2014 {row[col['sender']]}"
+            if action_items:
+                try:
+                    total_items += self._notion.write_action_items(
+                        self._notion_db_id,
+                        action_items,
+                        category=category,
+                        source_email=source,
+                    )
+                except Exception as exc:
+                    failed += 1
+                    log.error("Notion write failed for row %d: %s", i + 2, exc)
+                    if verbose:
+                        print(f"\n  \u26a0 Notion write failed for row {i + 2}: {exc}")
+        log.info("Pushed %d action item(s) to Notion (%d failed)", total_items, failed)
+        if verbose:
+            msg = f"Pushed {total_items} action item(s) to Notion."
+            if failed:
+                msg += f" ({failed} failed)"
+            print(msg)
+      
     def _build_prompt(self, sender: str, date: str, subject: str, body: str, context: str = "") -> str:
         return (
             "You are an email triage assistant. Analyze the email and respond using "

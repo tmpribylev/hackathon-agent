@@ -29,3 +29,24 @@ class LLMClient:
         text = message.content[0].text.strip()
         log.debug("LLM response: %d chars", len(text))
         return text
+
+    def chat(
+        self,
+        messages: list[dict],
+        system: str = "",
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        model: str = DEFAULT_MODEL,
+    ) -> str:
+        """Multi-turn conversation. *messages* is a list of {"role", "content"} dicts."""
+        log.debug("LLM chat: model=%s, turns=%d, max_tokens=%d", model, len(messages), max_tokens)
+        kwargs: dict = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+        }
+        if system:
+            kwargs["system"] = system
+        message = self._client.messages.create(**kwargs)
+        text = message.content[0].text.strip()
+        log.debug("LLM chat response: %d chars", len(text))
+        return text

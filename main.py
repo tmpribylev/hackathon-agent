@@ -23,10 +23,13 @@ def main():
     parser = argparse.ArgumentParser(
         description="Analyze emails in a Google Sheet with Claude and write results back."
     )
-    parser.add_argument("spreadsheet_id", help="Google Sheets spreadsheet ID")
+    parser.add_argument(
+        "spreadsheet_id",
+        nargs="?",
+        default=None,
+        help="Google Sheets spreadsheet ID (overrides .env)",
+    )
     args = parser.parse_args()
-
-    log.info("Starting email analyzer for spreadsheet %s", args.spreadsheet_id)
 
     try:
         config = Config.from_env()
@@ -34,9 +37,16 @@ def main():
         log.error("Configuration error: %s", e)
         sys.exit(f"Error: {e}")
 
+    spreadsheet_id = args.spreadsheet_id or config.spreadsheet_id
+    if not spreadsheet_id:
+        log.error("No spreadsheet ID provided")
+        sys.exit("Error: Provide SPREADSHEET_ID via .env or as a CLI argument.")
+
+    log.info("Starting email analyzer for spreadsheet %s", spreadsheet_id)
+
     print("Authenticating with Google Sheets\u2026")
     try:
-        sheets = SheetsClient(args.spreadsheet_id)
+        sheets = SheetsClient(spreadsheet_id)
     except ValueError as e:
         log.error("Sheets authentication failed: %s", e)
         sys.exit(f"Error: {e}")
