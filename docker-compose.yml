@@ -1,0 +1,8 @@
+services:
+  hackathon-agent:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
