@@ -200,6 +200,27 @@ python bot.py
 
 Requires `TELEGRAM_BOT_TOKEN` and `SPREADSHEET_ID` in `.env`.
 
+### Docker
+
+Build and run the application using Docker. This runs both the Telegram bot and schedules the CLI to run every 3 minutes via cron.
+
+#### Build the image and run detached
+
+```bash
+docker compose up --build -d
+```
+
+This mounts the `logs/` directory and uses your `.env` file for configuration.
+
+#### View logs
+
+```bash
+docker compose logs -f
+```
+And monitor the current `./logs` directory for appearing files.
+
+> **Note:** The container runs the Telegram bot in the foreground and schedules `main.py` to run every 3 minutes via cron. Make sure `SPREADSHEET_ID` is set in your `.env` file.
+
 ---
 
 ## 7. Telegram bot
