@@ -44,6 +44,9 @@ GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 GMAIL_TOKEN_PATH = "gmail_token.json"
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]
 
+# ── Local DB cache ───────────────────────────────────────────────────────────
+DEFAULT_DB_PATH = "data/email_cache.db"
+
 
 @dataclass
 class Config:

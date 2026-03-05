@@ -17,6 +17,10 @@ build/
 # Logs
 logs/
 
+# Local DB cache
+data/
+*.db
+
 # IDE
 .idea/
 .vscode/

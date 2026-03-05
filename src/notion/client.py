@@ -62,6 +62,41 @@ class NotionClient:
             log.debug("Created Notion page: %s [%s]", item["title"], item["priority"])
         return len(items)
 
+    def write_single_action_item(
+        self,
+        database_id: str,
+        *,
+        title: str,
+        priority: str = "Medium",
+        category: str = DEFAULT_CATEGORY,
+        details: str = "",
+        source_email: str = "",
+        due_date: str | None = None,
+    ) -> None:
+        """Write a single pre-parsed action item to Notion."""
+        properties: dict = {
+            "Action Item": {"title": [{"text": {"content": title}}]},
+            "Priority": {"select": {"name": priority}},
+            "Status": {"select": {"name": "Open"}},
+            "Category": {"select": {"name": category}},
+        }
+        if details:
+            properties["Details"] = {
+                "rich_text": [{"text": {"content": details[:2000]}}]
+            }
+        if source_email:
+            properties["Source Email"] = {
+                "rich_text": [{"text": {"content": source_email[:2000]}}]
+            }
+        if due_date:
+            properties["Due Date"] = {"date": {"start": due_date}}
+
+        self._client.pages.create(
+            parent={"database_id": database_id},
+            properties=properties,
+        )
+        log.debug("Created single Notion action item: %s [%s]", title, priority)
+
     def get_sender(self, database_id: str, email: str) -> dict | None:
         """Query sender database by email address.
 

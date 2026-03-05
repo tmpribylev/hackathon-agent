@@ -5,14 +5,77 @@ from __future__ import annotations
 import logging
 
 from src.config import TG_REPLY_DRAFT_MAX_TOKENS, TG_CHAT_MAX_TOKENS, TG_CHAT_MAX_HISTORY
-from src.prompts import DRAFT_REPLY_PROMPT
+from src.prompts import DRAFT_REPLY_PROMPT, CHAT_SYSTEM_PROMPT_HEADER
 from src.llm.client import LLMClient
 from src.agents.email_analyzer import EmailAnalyzer, AnalysisResult
-from src.notion.client import NotionClient
 from src.gmail.client import GmailClient
-from src.telegram.context_store import AnalyzedEmail, EmailContextStore
+from src.db.client import LocalDB
+from src.db.sync import SyncManager
+from src.telegram.context_store import AnalyzedEmail
 
 log = logging.getLogger(__name__)
+
+
+class _DBBackedStore:
+    """Drop-in replacement for EmailContextStore backed by LocalDB.
+
+    Reads from SQLite and returns AnalyzedEmail objects.
+    Draft replies stay in-memory since they are ephemeral.
+    """
+
+    def __init__(self, db: LocalDB) -> None:
+        self._db = db
+        self._draft_replies: dict[int, str] = {}
+
+    def all_emails(self) -> list[AnalyzedEmail]:
+        return [self._row_to_email(r) for r in self._db.get_all_emails()]
+
+    def get(self, row_index: int) -> AnalyzedEmail | None:
+        email = self._db.get_email(row_index)
+        if not email:
+            return None
+        return self._row_to_email(email)
+
+    def emails_with_action_items(self) -> list[AnalyzedEmail]:
+        return [e for e in self.all_emails() if e.action_items.strip()]
+
+    def set_draft_reply(self, row_index: int, draft: str) -> None:
+        self._draft_replies[row_index] = draft
+
+    def as_context_summary(self) -> str:
+        emails = self.all_emails()
+        if not emails:
+            return "No emails have been analyzed yet."
+
+        parts: list[str] = []
+        for email in emails:
+            parts.append(
+                f"--- Email #{email.row_index} ---\n"
+                f"From: {email.sender}\n"
+                f"Date: {email.date}\n"
+                f"Subject: {email.subject}\n"
+                f"Body: {email.body}\n"
+                f"Summary: {email.summary}\n"
+                f"Category: {email.category}\n"
+                f"Action Items:\n{email.action_items}\n"
+                f"Reply Strategy:\n{email.reply_strategy}\n"
+            )
+        return CHAT_SYSTEM_PROMPT_HEADER + "\n".join(parts)
+
+    def _row_to_email(self, row: dict) -> AnalyzedEmail:
+        row_id = row["id"]
+        return AnalyzedEmail(
+            row_index=row_id,
+            sender=row.get("sender", ""),
+            date=row.get("date", ""),
+            subject=row.get("subject", ""),
+            body=row.get("body", ""),
+            summary=row.get("summary", ""),
+            category=row.get("category", ""),
+            action_items=row.get("action_items", ""),
+            reply_strategy=row.get("reply_strategy", ""),
+            draft_reply=self._draft_replies.get(row_id, ""),
+        )
 
 
 class EmailBotService:
@@ -20,60 +83,37 @@ class EmailBotService:
         self,
         analyzer: EmailAnalyzer,
         llm: LLMClient,
-        notion: NotionClient | None = None,
-        notion_emails_db_id: str | None = None,
+        db: LocalDB,
+        sync_manager: SyncManager,
         gmail: GmailClient | None = None,
     ) -> None:
         self._analyzer = analyzer
         self._llm = llm
-        self._notion = notion
-        self._notion_emails_db_id = notion_emails_db_id
+        self._db = db
+        self._sync_manager = sync_manager
         self._gmail = gmail
-        self.store = EmailContextStore()
+        self.store = _DBBackedStore(db)
         self._chat_histories: dict[int, list[dict]] = {}
 
     # ── analysis ──────────────────────────────────────────────────────────────
 
     def run_analysis(self) -> int:
-        """Run the email analyzer, load results into store.
+        """Run the email analyzer pipeline.
 
+        Results are written to the local DB by the analyzer (when db is set).
         Returns the number of emails analyzed.
         """
         log.info("Starting email analysis pipeline")
         results = self._analyzer.analyze()
         log.info("Analysis complete: %d email(s) analyzed", len(results))
-
-        self.store.load(self._results_to_analyzed(results))
         return len(results)
 
     def load_from_notion(self) -> int:
-        """Read previously analyzed emails from Notion and load into store.
+        """Download emails from Notion into local DB.
 
         Returns the number of emails loaded.
         """
-        if not self._notion or not self._notion_emails_db_id:
-            log.info("Notion not configured, skipping load")
-            return 0
-
-        log.info("Loading email analyses from Notion")
-        pages = self._notion.read_email_analyses(self._notion_emails_db_id)
-        emails = [
-            AnalyzedEmail(
-                row_index=i,
-                sender=p.get("sender", ""),
-                date=p.get("date", ""),
-                subject=p.get("subject", ""),
-                body=p.get("body", ""),
-                summary=p.get("summary", ""),
-                category=p.get("category", ""),
-                action_items=p.get("action_items", ""),
-                reply_strategy=p.get("reply_strategy", ""),
-            )
-            for i, p in enumerate(pages)
-        ]
-        self.store.load(emails)
-        log.info("Loaded %d email(s) from Notion", len(emails))
-        return len(emails)
+        return self._sync_manager.load_emails_from_notion()
 
     # ── draft reply ───────────────────────────────────────────────────────────
 
@@ -146,22 +186,3 @@ class EmailBotService:
         """Clear chat history for a user."""
         log.info("Chat history reset for user=%d", user_id)
         self._chat_histories.pop(user_id, None)
-
-    # ── internal ──────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _results_to_analyzed(results: list[AnalysisResult]) -> list[AnalyzedEmail]:
-        return [
-            AnalyzedEmail(
-                row_index=r.row_index,
-                sender=r.sender,
-                date=r.date,
-                subject=r.subject,
-                body=r.body,
-                summary=r.summary,
-                category=r.category,
-                action_items=r.action_items,
-                reply_strategy=r.reply_strategy,
-            )
-            for r in results
-        ]
