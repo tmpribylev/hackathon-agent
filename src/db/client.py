@@ -242,6 +242,56 @@ class LocalDB:
             self._conn.commit()
             return cur.lastrowid
 
+    def upsert_senders_batch(self, senders: list[dict]) -> int:
+        """Bulk upsert sender records from Notion.
+
+        For existing local senders: only updates ``manual_comment`` so that
+        locally-generated fields (ai_summary, email_count, etc.) are preserved.
+        For new senders: inserts the full record with source='notion', synced=1.
+        Returns the number of records upserted.
+        """
+        now = datetime.now().isoformat()
+        count = 0
+        cur = self._conn.cursor()
+        for s in senders:
+            email = s.get("email", "")
+            if not email:
+                continue
+            existing = cur.execute(
+                "SELECT id FROM senders WHERE email = ?", (email,)
+            ).fetchone()
+            if existing:
+                cur.execute(
+                    """UPDATE senders SET manual_comment = ?, updated_at = ?
+                       WHERE id = ?""",
+                    (
+                        s.get("manual_comment", ""),
+                        now,
+                        existing["id"],
+                    ),
+                )
+            else:
+                cur.execute(
+                    """INSERT INTO senders
+                       (email, sender_name, manual_comment, ai_summary,
+                        last_contact_date, email_count, source, synced,
+                        created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, 'notion', 1, ?, ?)""",
+                    (
+                        email,
+                        s.get("name", ""),
+                        s.get("manual_comment", ""),
+                        s.get("ai_summary", ""),
+                        s.get("last_contact_date", ""),
+                        s.get("email_count", 0),
+                        now,
+                        now,
+                    ),
+                )
+            count += 1
+        self._conn.commit()
+        return count
+
     def get_sender(self, email: str) -> dict | None:
         row = self._conn.execute(
             "SELECT * FROM senders WHERE email = ?", (email,)

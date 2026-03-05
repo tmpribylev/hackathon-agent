@@ -78,6 +78,11 @@ def main():
         notion_sender_db_id=config.notion_sender_db_id,
     )
 
+    # Sync contact list from Notion on startup
+    if notion and config.notion_sender_db_id:
+        count = sync_manager.load_senders_from_notion()
+        print(f"Synced {count} contact(s) from Notion.")
+
     try:
         EmailAnalyzer(
             llm, sheets, renderer, notion, notion_db_id,

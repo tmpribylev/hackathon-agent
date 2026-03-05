@@ -31,6 +31,7 @@ from src.telegram.handlers import (
     help_handler,
     analyze_handler,
     load_handler,
+    sync_handler,
     emails_handler,
     actions_handler,
     reset_handler,
@@ -86,6 +87,11 @@ def main() -> None:
         notion_sender_db_id=config.notion_sender_db_id,
     )
 
+    # Sync contact list from Notion on startup
+    if notion and config.notion_sender_db_id:
+        count = sync_manager.load_senders_from_notion()
+        print(f"Synced {count} contact(s) from Notion.")
+
     llm = LLMClient(config)
     renderer = EmailTableRenderer()
     analyzer = EmailAnalyzer(
@@ -139,6 +145,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help", help_handler))
     app.add_handler(CommandHandler("analyze", analyze_handler))
     app.add_handler(CommandHandler("load", load_handler))
+    app.add_handler(CommandHandler("sync", sync_handler))
     app.add_handler(CommandHandler("emails", emails_handler))
     app.add_handler(CommandHandler("actions", actions_handler))
     app.add_handler(CommandHandler("reset", reset_handler))
@@ -149,6 +156,7 @@ def main() -> None:
         await application.bot.set_my_commands([
             BotCommand("analyze", "Run email analysis pipeline"),
             BotCommand("load", "Load previous analyses from Notion"),
+            BotCommand("sync", "Sync contact list from Notion"),
             BotCommand("emails", "Browse analyzed emails"),
             BotCommand("actions", "Show all action items"),
             BotCommand("reset", "Clear chat history"),

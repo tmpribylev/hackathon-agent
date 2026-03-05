@@ -111,6 +111,23 @@ class SyncManager:
 
     # ── load from Notion ───────────────────────────────────────────────────────
 
+    def load_senders_from_notion(self) -> int:
+        """Download all senders from Notion into SQLite.
+
+        Merges into existing sender records (upsert). Local-only senders
+        not present in Notion are preserved.
+        Returns the number of senders synced.
+        """
+        if not self._notion or not self._notion_sender_db_id:
+            log.info("Notion sender DB not configured, skipping contact sync")
+            return 0
+
+        log.info("Loading senders from Notion into local DB")
+        senders = self._notion.read_all_senders(self._notion_sender_db_id)
+        count = self._db.upsert_senders_batch(senders)
+        log.info("Synced %d sender(s) from Notion into local DB", count)
+        return count
+
     def load_emails_from_notion(self) -> int:
         """Download all emails from Notion into SQLite.
 

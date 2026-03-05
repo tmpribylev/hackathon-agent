@@ -108,6 +108,13 @@ class EmailBotService:
         log.info("Analysis complete: %d email(s) analyzed", len(results))
         return len(results)
 
+    def sync_contacts(self) -> int:
+        """Sync sender contact list from Notion into local DB.
+
+        Returns the number of contacts synced.
+        """
+        return self._sync_manager.load_senders_from_notion()
+
     def load_from_notion(self) -> int:
         """Download emails from Notion into local DB.
 
