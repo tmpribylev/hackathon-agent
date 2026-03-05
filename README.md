@@ -238,6 +238,7 @@ The Telegram bot provides an interactive interface for email analysis.
 | `/analyze` | Run email analysis pipeline |
 | `/briefing` | Morning briefing — overdue, due today, open action items + LLM recommendation |
 | `/load` | Load previous analyses from Notion |
+| `/loadactions` | Load action items from Notion into local DB |
 | `/sync` | Sync contact list from Notion into local DB |
 | `/push` | Push all unsynced analyzed data to Notion |
 | `/emails` | Browse analyzed emails with pagination |
@@ -253,6 +254,7 @@ The Telegram bot provides an interactive interface for email analysis.
 - **Draft reply generation** — Generate a professional reply using Claude, based on the email context and reply strategy
 - **Save as Gmail Draft** — One-click button to save the generated reply as a draft in your Gmail inbox (requires Gmail API setup)
 - **Free-text chat** — Send any message to chat about the analyzed emails with full conversation history
+- **Action items sync** — `/loadactions` downloads action items from Notion into the local DB, keeping them in sync with manual edits made in Notion
 - **Contact sync** — `/sync` downloads sender profiles (including manual notes) from Notion into the local DB for faster lookups
 - **Push to Notion** — `/push` uploads all unsynced emails, action items, and sender records to Notion in one command
 

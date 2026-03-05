@@ -31,6 +31,7 @@ HELP_TEXT = (
     "/analyze — Run email analysis pipeline\n"
     "/briefing — Morning briefing with priorities\n"
     "/load — Load previous analyses from Notion\n"
+    "/loadactions — Load action items from Notion\n"
     "/sync — Sync contact list from Notion\n"
     "/push — Push analyzed data to Notion\n"
     "/emails — Browse analyzed emails\n"
@@ -83,6 +84,25 @@ async def load_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception as exc:
         log.error("Load from Notion failed: %s", exc)
         await update.message.reply_text(f"Load failed: {_esc(str(exc))}", parse_mode="HTML")
+
+
+async def loadactions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/loadactions from user=%d", update.effective_user.id)
+    service = _get_service(context)
+    await update.message.reply_text("Loading action items from Notion…")
+    try:
+        count = await asyncio.to_thread(service.load_action_items_from_notion)
+        if count:
+            await update.message.reply_text(f"Loaded {count} action item(s) from Notion.")
+        else:
+            await update.message.reply_text(
+                "No action items found in Notion (or Notion not configured)."
+            )
+    except Exception as exc:
+        log.error("Load action items from Notion failed: %s", exc)
+        await update.message.reply_text(
+            f"Load failed: {_esc(str(exc))}", parse_mode="HTML"
+        )
 
 
 async def sync_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
