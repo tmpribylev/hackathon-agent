@@ -1,6 +1,7 @@
 """Simple Gmail connector for creating draft messages."""
 
 import base64
+import logging
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -9,13 +10,13 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
+from src.config import GMAIL_TOKEN_PATH, GMAIL_SCOPES, CREDS_PATH
+
+log = logging.getLogger(__name__)
+
 
 class GmailClient:
     """Gmail API client for creating draft messages."""
-
-    TOKEN_PATH = "gmail_token.json"
-    CREDS_PATH = "credentials.json"
-    SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]
 
     def __init__(self) -> None:
         """Initialize Gmail client and authenticate."""
@@ -23,27 +24,31 @@ class GmailClient:
 
     def _authenticate(self):
         """Authenticate with Gmail API using OAuth 2.0."""
+        log.info("Authenticating with Gmail API")
         creds = None
-        if Path(self.TOKEN_PATH).exists():
-            creds = Credentials.from_authorized_user_file(self.TOKEN_PATH, self.SCOPES)
+        if Path(GMAIL_TOKEN_PATH).exists():
+            creds = Credentials.from_authorized_user_file(GMAIL_TOKEN_PATH, GMAIL_SCOPES)
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
+                log.info("Refreshing expired Gmail credentials")
                 creds.refresh(Request())
             else:
-                if not Path(self.CREDS_PATH).exists():
+                if not Path(CREDS_PATH).exists():
                     raise ValueError(
-                        f"{self.CREDS_PATH} not found. "
+                        f"{CREDS_PATH} not found. "
                         "Download it from Google Cloud Console."
                     )
+                log.info("Running OAuth flow for new Gmail credentials")
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    self.CREDS_PATH, self.SCOPES
+                    CREDS_PATH, GMAIL_SCOPES
                 )
                 creds = flow.run_local_server(port=0)
 
-            with open(self.TOKEN_PATH, "w") as f:
+            with open(GMAIL_TOKEN_PATH, "w") as f:
                 f.write(creds.to_json())
 
+        log.info("Gmail authentication successful")
         return build("gmail", "v1", credentials=creds)
 
     def create_draft(self, message: str, recipient: str, subject: str) -> str:
@@ -60,6 +65,7 @@ class GmailClient:
         Raises:
             RuntimeError: If draft creation fails
         """
+        log.info("Creating Gmail draft to=%s subject=%s", recipient, subject)
         try:
             mime_message = MIMEText(message)
             mime_message["to"] = recipient
@@ -75,7 +81,9 @@ class GmailClient:
                 .execute()
             )
 
+            log.info("Gmail draft created: id=%s", draft["id"])
             return draft["id"]
 
         except Exception as e:
+            log.error("Failed to create Gmail draft: %s", e)
             raise RuntimeError(f"Failed to create draft: {e}") from e
