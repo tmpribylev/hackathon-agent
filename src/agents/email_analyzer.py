@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 from dataclasses import dataclass
 
 from src.config import CATEGORIES, DEFAULT_CATEGORY, EMAIL_ANALYSIS_MAX_TOKENS
@@ -38,12 +39,14 @@ class EmailAnalyzer:
         renderer: EmailTableRenderer,
         notion: NotionClient | None = None,
         notion_db_id: str | None = None,
+        notion_sender_db_id: str | None = None,
     ) -> None:
         self._llm = llm
         self._sheets = sheets
         self._renderer = renderer
         self._notion = notion
         self._notion_db_id = notion_db_id
+        self._notion_sender_db_id = notion_sender_db_id
         self._today = datetime.date.today().isoformat()
 
     # ── public entry points ───────────────────────────────────────────────────
@@ -134,9 +137,25 @@ class EmailAnalyzer:
             body = row[col["body"]]
             log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
             print(f"  [{processed}/{to_process}] {subject[:60]}", end="\r", flush=True)
-            result = self._analyze_email(sender, date, subject, body)
-            log.info("Result — category=%s, summary=%s", result[1], result[0])
-            results.append(result)
+            summary, category, action_items, reply_strategy, email_address = (
+                self._analyze_email(sender, date, subject, body)
+            )
+            log.info("Result — category=%s, summary=%s", category, summary)
+            results.append((summary, category, action_items, reply_strategy))
+
+            # Upsert sender in Notion
+            if self._notion and self._notion_sender_db_id:
+                try:
+                    self._notion.upsert_sender(
+                        self._notion_sender_db_id,
+                        email_address,
+                        sender,
+                        summary,
+                        date,
+                    )
+                except Exception as exc:
+                    log.error("Failed to upsert sender for row %d: %s", i + 2, exc)
+
         print(" " * 80, end="\r")  # clear progress line
 
         if to_process > 0:
@@ -182,6 +201,35 @@ class EmailAnalyzer:
             return set()
         return {idx for idx, row in enumerate(rows) if row[out_summary_i].strip()}
 
+    @staticmethod
+    def _extract_email_address(sender: str) -> str:
+        """Extract email from sender string.
+
+        Handles formats: "email@example.com" or "Name <email@example.com>"
+        Returns lowercase email address.
+        """
+        match = re.search(r'<(.+?)>', sender)
+        if match:
+            return match.group(1).strip().lower()
+        return sender.strip().lower()
+
+    @staticmethod
+    def _build_context_section(manual_comment: str, ai_summary: str) -> str:
+        """Build context string with priority labels.
+
+        Returns empty string if both are empty.
+        """
+        parts = []
+        if manual_comment:
+            parts.append(f"[TOP PRIORITY] Manual Notes: {manual_comment}")
+        if ai_summary:
+            parts.append(f"[MEDIUM PRIORITY] AI Summary: {ai_summary}")
+
+        if not parts:
+            return ""
+
+        return "Previous interaction context:\n" + "\n".join(parts) + "\n\n"
+      
     def _push_action_items_to_notion(
         self,
         rows: list[list[str]],
@@ -217,8 +265,8 @@ class EmailAnalyzer:
             if failed:
                 msg += f" ({failed} failed)"
             print(msg)
-
-    def _build_prompt(self, sender: str, date: str, subject: str, body: str) -> str:
+      
+    def _build_prompt(self, sender: str, date: str, subject: str, body: str, context: str = "") -> str:
         return (
             "You are an email triage assistant. Analyze the email and respond using "
             "EXACTLY this format (keep the section headers verbatim, no extra blank "
@@ -256,6 +304,8 @@ class EmailAnalyzer:
             "to this specific email.\n"
             "- No extra commentary outside the four sections.\n\n"
             f"Today's date: {self._today}\n"
+            f"{context}"
+            "[CURRENT EMAIL]\n"
             f"From: {sender}\n"
             f"Date: {date}\n"
             f"Subject: {subject}\n"
@@ -264,9 +314,21 @@ class EmailAnalyzer:
 
     def _analyze_email(
         self, sender: str, date: str, subject: str, body: str
-    ) -> tuple[str, str, str, str]:
-        """Return (summary, category, action_items, reply_strategy)."""
-        prompt = self._build_prompt(sender, date, subject, body)
+    ) -> tuple[str, str, str, str, str]:
+        """Return (summary, category, action_items, reply_strategy, email_address)."""
+        email_address = self._extract_email_address(sender)
+        context = ""
+
+        # Lookup sender context if Notion configured
+        if self._notion and self._notion_sender_db_id:
+            sender_data = self._notion.get_sender(self._notion_sender_db_id, email_address)
+            if sender_data:
+                context = self._build_context_section(
+                    sender_data.get("manual_comment", ""),
+                    sender_data.get("ai_summary", "")
+                )
+
+        prompt = self._build_prompt(sender, date, subject, body, context)
         text = self._llm.complete(prompt, max_tokens=EMAIL_ANALYSIS_MAX_TOKENS)
 
         def extract_section(label: str, next_label: str | None) -> str:
@@ -293,4 +355,4 @@ class EmailAnalyzer:
         action_items = extract_section("Action Items:", "Reply Strategy:")
         reply_strategy = extract_section("Reply Strategy:", None)
 
-        return summary, category, action_items, reply_strategy
+        return summary, category, action_items, reply_strategy, email_address

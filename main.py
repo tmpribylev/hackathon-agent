@@ -76,7 +76,9 @@ def main():
         sys.exit(f"Error: {e}")
 
     try:
-        EmailAnalyzer(llm, sheets, renderer, notion, notion_db_id).run()
+        EmailAnalyzer(
+            llm, sheets, renderer, notion, notion_db_id, config.notion_sender_db_id
+        ).run()
     except ValueError as e:
         log.error("Analyzer failed: %s", e)
         sys.exit(f"Error: {e}")

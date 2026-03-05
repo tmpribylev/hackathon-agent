@@ -307,3 +307,10 @@ Already-processed rows (those with an existing Summary value) are skipped on re-
 ## Logging
 
 All modules log via Python's `logging` module. Log files are written daily to `logs/YYYY-MM-DD.log`. No logs are printed to the console — console output uses `print()` directly.
+
+%TODO
+
+Notion connectivity is slow and expensive.
+On start, cache both Notion tables to local Sqlite storage locations, these are rocket fast for address retrievals and changes.
+On update/insert, mark rows as dirty.
+On back sync, update only contacts with dirty rows.
