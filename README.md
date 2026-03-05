@@ -53,10 +53,11 @@ ANTHROPIC_BASE_URL=https://api.anthropic.com   # optional, change only if using 
 # Google Sheets
 SPREADSHEET_ID=your-spreadsheet-id
 
-# Notion (optional — for pushing action items and storing email analyses)
+# Notion (optional — for pushing action items, storing email analyses, and sender tracking)
 NOTION_TOKEN=your-notion-internal-integration-token
 NOTION_ACTION_ITEMS_DB_ID=your-notion-database-id
 NOTION_EMAILS_DB_ID=your-notion-emails-database-id
+NOTION_SENDER_DB_ID=your-notion-sender-database-id
 
 # Telegram bot (optional)
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
@@ -106,7 +107,7 @@ Four new columns — **Summary**, **Category**, **Action Items**, and **Reply St
 
 ## 5. Notion integration setup (optional)
 
-Notion integration pushes action items extracted from emails into a Notion database with **Action Item**, **Priority**, and **Status** properties.
+Notion integration pushes action items extracted from emails into a Notion database and tracks sender history in a separate contacts database.
 
 ### 5a. Create a Notion internal integration
 
@@ -126,6 +127,7 @@ Notion integration pushes action items extracted from emails into a Notion datab
 NOTION_TOKEN=ntn_...
 NOTION_ACTION_ITEMS_DB_ID=your-notion-database-id
 NOTION_EMAILS_DB_ID=your-notion-emails-database-id
+NOTION_SENDER_DB_ID=your-notion-sender-database-id
 ```
 
 The database ID is the 32-character hex string in the database URL:
@@ -136,11 +138,41 @@ https://www.notion.so/THIS_PART_IS_THE_ID?v=THIS_PART_IS_NOT_THE_ID_BUT_THE_VIEW
 
 ### Expected database properties
 
+**Action Items database** (`NOTION_ACTION_ITEMS_DB_ID`):
+
 | Property | Type | Notes |
 |---|---|---|
 | Action Item | `title` | Main column — action item text |
-| Priority | `select` | Auto-created options: High, Medium, Low |
+| Priority | `select` | Critical, High, Medium, Low |
 | Status | `select` | Set to "Open" for new items |
+| Category | `select` | Email category (Support, Sales, etc.) |
+| Details | `rich_text` | Detailed explanation of the action item |
+| Source Email | `rich_text` | Subject and sender of the source email |
+| Due Date | `date` | Suggested deadline based on priority |
+
+**Emails database** (`NOTION_EMAILS_DB_ID`):
+
+| Property | Type | Notes |
+|---|---|---|
+| Subject | `title` | Email subject (auto-renamed from default title column) |
+| Sender | `rich_text` | Sender address |
+| Date | `rich_text` | Email date |
+| Summary | `rich_text` | AI-generated summary |
+| Category | `select` | Email category |
+| Action Items | `rich_text` | Extracted action items |
+| Reply Strategy | `rich_text` | Suggested reply steps |
+| Body | `rich_text` | Original email body |
+
+**Sender database** (`NOTION_SENDER_DB_ID`):
+
+| Property | Type | Notes |
+|---|---|---|
+| Email | `title` | Sender email address (lookup key) |
+| Sender Name | `rich_text` | Display name |
+| Manual Comment | `rich_text` | User notes — never overwritten by the tool |
+| AI Summary | `rich_text` | Auto-updated summary from latest analysis |
+| Last Contact Date | `date` | Date of most recent email |
+| Email Count | `number` | Total emails processed from this sender |
 
 ---
 
@@ -231,7 +263,7 @@ Category colors:
 | Legal | Blue |
 | Other | White |
 
-Priority colors: **[HIGH]** Red, **[MEDIUM]** Yellow, **[LOW]** Green.
+Priority colors: **[CRITICAL]** Bold Red, **[HIGH]** Red, **[MEDIUM]** Yellow, **[LOW]** Green.
 
 ---
 
