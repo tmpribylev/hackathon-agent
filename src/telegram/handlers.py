@@ -31,7 +31,9 @@ HELP_TEXT = (
     "/analyze — Run email analysis pipeline\n"
     "/briefing — Morning briefing with priorities\n"
     "/load — Load previous analyses from Notion\n"
+    "/loadactions — Load action items from Notion\n"
     "/sync — Sync contact list from Notion\n"
+    "/push — Push analyzed data to Notion\n"
     "/emails — Browse analyzed emails\n"
     "/actions — Show all action items\n"
     "/reset — Clear chat history\n"
@@ -84,6 +86,25 @@ async def load_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(f"Load failed: {_esc(str(exc))}", parse_mode="HTML")
 
 
+async def loadactions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/loadactions from user=%d", update.effective_user.id)
+    service = _get_service(context)
+    await update.message.reply_text("Loading action items from Notion…")
+    try:
+        count = await asyncio.to_thread(service.load_action_items_from_notion)
+        if count:
+            await update.message.reply_text(f"Loaded {count} action item(s) from Notion.")
+        else:
+            await update.message.reply_text(
+                "No action items found in Notion (or Notion not configured)."
+            )
+    except Exception as exc:
+        log.error("Load action items from Notion failed: %s", exc)
+        await update.message.reply_text(
+            f"Load failed: {_esc(str(exc))}", parse_mode="HTML"
+        )
+
+
 async def sync_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     log.info("/sync from user=%d", update.effective_user.id)
     service = _get_service(context)
@@ -100,6 +121,28 @@ async def sync_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         log.error("Contact sync failed: %s", exc)
         await update.message.reply_text(
             f"Sync failed: {_esc(str(exc))}", parse_mode="HTML"
+        )
+
+
+async def push_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/push from user=%d", update.effective_user.id)
+    service = _get_service(context)
+    await update.message.reply_text("Pushing analyzed data to Notion…")
+    try:
+        counts = await asyncio.to_thread(service.push_to_notion)
+        total = sum(counts.values())
+        if total:
+            await update.message.reply_text(
+                f"Synced to Notion: {counts['emails']} email(s), "
+                f"{counts['action_items']} action item(s), "
+                f"{counts['senders']} sender(s)."
+            )
+        else:
+            await update.message.reply_text("Nothing new to push (all data already synced).")
+    except Exception as exc:
+        log.error("Push to Notion failed: %s", exc)
+        await update.message.reply_text(
+            f"Push failed: {_esc(str(exc))}", parse_mode="HTML"
         )
 
 

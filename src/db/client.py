@@ -215,6 +215,44 @@ class LocalDB:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def clear_notion_action_items(self) -> None:
+        """Remove only Notion-sourced action items, preserving local ones."""
+        with self._lock:
+            self._conn.execute("DELETE FROM action_items WHERE source = 'notion'")
+            self._conn.commit()
+
+    def clear_synced_local_action_items(self) -> None:
+        """Remove local action items already synced to Notion (they'll be re-imported)."""
+        with self._lock:
+            self._conn.execute("DELETE FROM action_items WHERE source = 'local' AND synced = 1")
+            self._conn.commit()
+
+    def insert_action_items_batch(self, items: list[dict]) -> int:
+        """Insert multiple action item records. Returns the number inserted."""
+        with self._lock:
+            self._conn.executemany(
+                """INSERT INTO action_items
+                   (title, priority, status, category, details, source_email,
+                    due_date, source, synced)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        item.get("title", ""),
+                        item.get("priority", "Medium"),
+                        item.get("status", "Open"),
+                        item.get("category", "Other"),
+                        item.get("details", ""),
+                        item.get("source_email", ""),
+                        item.get("due_date"),
+                        item.get("source", "notion"),
+                        1 if item.get("synced", True) else 0,
+                    )
+                    for item in items
+                ],
+            )
+            self._conn.commit()
+            return len(items)
+
     def mark_action_item_synced(self, item_id: int) -> None:
         with self._lock:
             self._conn.execute("UPDATE action_items SET synced = 1 WHERE id = ?", (item_id,))

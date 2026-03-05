@@ -354,6 +354,53 @@ class NotionClient:
         )
         return results
 
+    def read_all_action_items(self, database_id: str) -> list[dict]:
+        """Read all action item pages from the Notion Action Items database.
+
+        Returns list of dicts with keys: title, priority, status, category,
+        details, source_email, due_date.
+        """
+        results: list[dict] = []
+        has_more = True
+        start_cursor = None
+
+        while has_more:
+            body: dict = {"page_size": 100}
+            if start_cursor:
+                body["start_cursor"] = start_cursor
+
+            try:
+                response = self._client.request(
+                    path=f"databases/{database_id}/query",
+                    method="POST",
+                    body=body,
+                )
+            except Exception as exc:
+                log.error("Failed to query action items DB %s: %s", database_id, exc)
+                return results
+
+            for page in response.get("results", []):
+                props = page.get("properties", {})
+                results.append(
+                    {
+                        "title": self._get_title_text(props.get("Action Item", {})),
+                        "priority": self._get_select_name(props.get("Priority", {})) or "Medium",
+                        "status": self._get_select_name(props.get("Status", {})) or "Open",
+                        "category": self._get_select_name(props.get("Category", {})) or DEFAULT_CATEGORY,
+                        "details": self._get_rich_text(props.get("Details", {})),
+                        "source_email": self._get_rich_text(props.get("Source Email", {})),
+                        "due_date": self._extract_date(props.get("Due Date", {})) or None,
+                    }
+                )
+
+            has_more = response.get("has_more", False)
+            start_cursor = response.get("next_cursor")
+
+        log.info(
+            "Read %d action item(s) from Notion database %s", len(results), database_id
+        )
+        return results
+
     _emails_db_ready: set[str] = set()
 
     def _ensure_emails_db_schema(self, database_id: str) -> None:

@@ -122,6 +122,20 @@ class EmailBotService:
         """
         return self._sync_manager.load_senders_from_notion()
 
+    def push_to_notion(self) -> dict[str, int]:
+        """Push all unsynced analyzed data to Notion.
+
+        Returns a dict with counts: emails, action_items, senders.
+        """
+        return self._sync_manager.sync_to_notion()
+
+    def load_action_items_from_notion(self) -> int:
+        """Download action items from Notion into local DB.
+
+        Returns the number of action items loaded.
+        """
+        return self._sync_manager.load_action_items_from_notion()
+
     def load_from_notion(self) -> int:
         """Download emails from Notion into local DB.
 

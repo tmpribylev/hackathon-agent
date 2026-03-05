@@ -128,6 +128,43 @@ class SyncManager:
         log.info("Synced %d sender(s) from Notion into local DB", count)
         return count
 
+    def load_action_items_from_notion(self) -> int:
+        """Download all action items from Notion into SQLite.
+
+        Clears previously loaded Notion action items, then inserts fresh ones
+        with source='notion' and synced=True so they are never re-uploaded.
+        Locally created action items are preserved.
+        Returns the number of action items loaded.
+        """
+        if not self._notion or not self._notion_db_id:
+            log.info("Notion action items DB not configured, skipping load")
+            return 0
+
+        log.info("Loading action items from Notion into local DB")
+        items = self._notion.read_all_action_items(self._notion_db_id)
+
+        self._db.clear_notion_action_items()
+        self._db.clear_synced_local_action_items()
+        self._db.insert_action_items_batch(
+            [
+                {
+                    "title": item.get("title", ""),
+                    "priority": item.get("priority", "Medium"),
+                    "status": item.get("status", "Open"),
+                    "category": item.get("category", "Other"),
+                    "details": item.get("details", ""),
+                    "source_email": item.get("source_email", ""),
+                    "due_date": item.get("due_date"),
+                    "source": "notion",
+                    "synced": True,
+                }
+                for item in items
+            ]
+        )
+
+        log.info("Loaded %d action item(s) from Notion into local DB", len(items))
+        return len(items)
+
     def load_emails_from_notion(self) -> int:
         """Download all emails from Notion into SQLite.
 
