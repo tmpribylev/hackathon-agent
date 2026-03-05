@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import logging
 
-from src.config import TG_REPLY_DRAFT_MAX_TOKENS, TG_CHAT_MAX_TOKENS, TG_CHAT_MAX_HISTORY
-from src.prompts import DRAFT_REPLY_PROMPT, CHAT_SYSTEM_PROMPT_HEADER
+import datetime
+
+from src.config import (
+    TG_REPLY_DRAFT_MAX_TOKENS,
+    TG_BRIEFING_MAX_TOKENS,
+    TG_CHAT_MAX_TOKENS,
+    TG_CHAT_MAX_HISTORY,
+)
+from src.prompts import BRIEFING_RECOMMENDATION_PROMPT, DRAFT_REPLY_PROMPT, CHAT_SYSTEM_PROMPT_HEADER
 from src.llm.client import LLMClient
 from src.agents.email_analyzer import EmailAnalyzer, AnalysisResult
 from src.gmail.client import GmailClient
@@ -121,6 +128,61 @@ class EmailBotService:
         Returns the number of emails loaded.
         """
         return self._sync_manager.load_emails_from_notion()
+
+    # ── briefing ──────────────────────────────────────────────────────────────
+
+    def briefing(self) -> str:
+        """Build a morning briefing: deterministic sections + LLM recommendation."""
+        emails = self.store.all_emails()
+        if not emails:
+            return "No emails loaded. Use /analyze or /load first."
+
+        today = datetime.date.today().isoformat()
+        action_items = self._db.get_open_action_items()
+
+        # ── Overview ──
+        cats: dict[str, int] = {}
+        for e in emails:
+            cats[e.category] = cats.get(e.category, 0) + 1
+        cat_line = ", ".join(f"{v} {k}" for k, v in sorted(cats.items(), key=lambda x: -x[1]))
+        lines = [f"📊 OVERVIEW\n{len(emails)} emails: {cat_line}"]
+
+        # ── Overdue items ──
+        overdue = [a for a in action_items if a["due_date"] and a["due_date"] < today]
+        if overdue:
+            lines.append("\n🔴 OVERDUE")
+            for a in overdue:
+                src = f" ({a['source_email']})" if a["source_email"] else ""
+                lines.append(f"  • [{a['priority']}] {a['title']} — due {a['due_date']}{src}")
+
+        # ── Due today ──
+        due_today = [a for a in action_items if a["due_date"] == today]
+        if due_today:
+            lines.append("\n🟡 DUE TODAY")
+            for a in due_today:
+                src = f" ({a['source_email']})" if a["source_email"] else ""
+                lines.append(f"  • [{a['priority']}] {a['title']}{src}")
+
+        # ── Upcoming (open, future or no date) ──
+        upcoming = [a for a in action_items if a not in overdue and a not in due_today]
+        if upcoming:
+            lines.append("\n📋 OPEN ACTION ITEMS")
+            for a in upcoming:
+                due = f" — due {a['due_date']}" if a["due_date"] else ""
+                lines.append(f"  • [{a['priority']}] {a['title']}{due}")
+
+        if not action_items:
+            lines.append("\n✅ No open action items.")
+
+        # ── LLM recommendation ──
+        briefing_text = "\n".join(lines)
+        context = f"Briefing so far:\n{briefing_text}\n\nEmails analyzed: {len(emails)}, Open action items: {len(action_items)}, Overdue: {len(overdue)}, Due today: {len(due_today)}"
+        prompt = BRIEFING_RECOMMENDATION_PROMPT.format(today=today, context=context)
+        log.info("Generating briefing recommendation")
+        recommendation = self._llm.complete(prompt, max_tokens=TG_BRIEFING_MAX_TOKENS)
+
+        lines.append(f"\n💡 RECOMMENDATION\n{recommendation}")
+        return "\n".join(lines)
 
     # ── draft reply ───────────────────────────────────────────────────────────
 

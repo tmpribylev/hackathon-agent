@@ -63,6 +63,15 @@ CHAT_SYSTEM_PROMPT_HEADER = (
     "Answer questions about them accurately and concisely.\n\n"
 )
 
+BRIEFING_RECOMMENDATION_PROMPT = (
+    "You are an executive email assistant. Based on today's email briefing data "
+    "below, write a short recommendation paragraph (max 3 sentences). "
+    "Advise what to tackle first and why. Be specific — use names, subjects, "
+    "deadlines. Plain text only, no markdown.\n\n"
+    "Today's date: {today}\n\n"
+    "{context}"
+)
+
 SENDER_SUMMARY_PROMPT = (
     "You are an assistant that maintains a concise profile of an email "
     "contact. Your job is to write or update a short summary about a person "

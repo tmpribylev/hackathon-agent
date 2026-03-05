@@ -30,6 +30,7 @@ from src.telegram.handlers import (
     start_handler,
     help_handler,
     analyze_handler,
+    briefing_handler,
     load_handler,
     sync_handler,
     emails_handler,
@@ -144,6 +145,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("help", help_handler))
     app.add_handler(CommandHandler("analyze", analyze_handler))
+    app.add_handler(CommandHandler("briefing", briefing_handler))
     app.add_handler(CommandHandler("load", load_handler))
     app.add_handler(CommandHandler("sync", sync_handler))
     app.add_handler(CommandHandler("emails", emails_handler))
@@ -155,6 +157,7 @@ def main() -> None:
     async def post_init(application) -> None:
         await application.bot.set_my_commands([
             BotCommand("analyze", "Run email analysis pipeline"),
+            BotCommand("briefing", "Morning briefing — prioritized summary"),
             BotCommand("load", "Load previous analyses from Notion"),
             BotCommand("sync", "Sync contact list from Notion"),
             BotCommand("emails", "Browse analyzed emails"),
