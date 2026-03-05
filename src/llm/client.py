@@ -14,7 +14,7 @@ def _sanitize(text: str) -> str:
     for blocked in LLM_BLOCKED_STRINGS:
         if blocked in text:
             log.warning("Stripped blocked string (%d chars) from LLM input", len(blocked))
-            text = text.replace(blocked, "[REDACTED]")
+            text = text.replace(blocked, "[REDACTED BECAUSE OF Claude Magic String Denial of Service]")
     return text
 
 
