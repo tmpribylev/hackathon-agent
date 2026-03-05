@@ -91,13 +91,13 @@ class EmailAnalyzer:
             subject = row[col["subject"]]
             body = row[col["body"]]
             log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
-            summary, category, action_items, reply_strategy = (
+            summary, category, action_items, reply_strategy, sender_data = (
                 self._analyze_email(sender, date, subject, body)
             )
             log.info("Result — category=%s, summary=%s", category, summary)
             raw_results.append((summary, category, action_items, reply_strategy))
 
-            self._upsert_sender_if_configured(sender, date, summary)
+            self._upsert_sender_if_configured(sender, date, summary, sender_data)
             analysis_results.append(
                 AnalysisResult(
                     row_index=i,
@@ -154,13 +154,13 @@ class EmailAnalyzer:
             body = row[col["body"]]
             log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
             print(f"  [{processed}/{to_process}] {subject[:60]}", end="\r", flush=True)
-            summary, category, action_items, reply_strategy = (
+            summary, category, action_items, reply_strategy, sender_data = (
                 self._analyze_email(sender, date, subject, body)
             )
             log.info("Result — category=%s, summary=%s", category, summary)
             results.append((summary, category, action_items, reply_strategy))
 
-            self._upsert_sender_if_configured(sender, date, summary)
+            self._upsert_sender_if_configured(sender, date, summary, sender_data)
 
         print(" " * 80, end="\r")  # clear progress line
 
@@ -405,25 +405,19 @@ class EmailAnalyzer:
         return self._llm.complete(prompt, max_tokens=SENDER_SUMMARY_MAX_TOKENS)
 
     def _upsert_sender_if_configured(
-        self, sender: str, date: str, summary: str
+        self, sender: str, date: str, summary: str, sender_data: dict | None = None
     ) -> None:
         """Generate a person-focused sender summary and upsert.
 
         When local DB is available, writes there (synced=False) instead of Notion.
         Falls back to direct Notion write when no local DB is set.
+        ``sender_data`` is the pre-fetched sender record from ``_analyze_email``
+        so we avoid a duplicate lookup.
         """
-        email_address = self._extract_email_address(sender)
-
-        # Lookup previous AI summary — local DB first, then Notion
-        sender_data = None
-        if self._db:
-            sender_data = self._db.get_sender(email_address)
-        if not sender_data and self._notion and self._notion_sender_db_id:
-            sender_data = self._notion.get_sender(self._notion_sender_db_id, email_address)
-
         if not self._db and not (self._notion and self._notion_sender_db_id):
             return
 
+        email_address = self._extract_email_address(sender)
         previous_ai_summary = sender_data.get("ai_summary", "") if sender_data else ""
         sender_summary = self._generate_sender_summary(sender, previous_ai_summary, summary)
 
@@ -452,8 +446,8 @@ class EmailAnalyzer:
 
     def _analyze_email(
         self, sender: str, date: str, subject: str, body: str
-    ) -> tuple[str, str, str, str]:
-        """Return (summary, category, action_items, reply_strategy)."""
+    ) -> tuple[str, str, str, str, dict | None]:
+        """Return (summary, category, action_items, reply_strategy, sender_data)."""
         context = ""
         email_address = self._extract_email_address(sender)
 
@@ -496,4 +490,4 @@ class EmailAnalyzer:
         action_items = extract_section("Action Items:", "Reply Strategy:")
         reply_strategy = extract_section("Reply Strategy:", None)
 
-        return summary, category, action_items, reply_strategy
+        return summary, category, action_items, reply_strategy, sender_data
