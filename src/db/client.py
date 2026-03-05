@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import threading
 from datetime import datetime
 
 log = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class LocalDB:
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._lock = threading.Lock()
         self._create_tables()
         log.info("LocalDB opened at %s", db_path)
 
@@ -85,167 +87,189 @@ class LocalDB:
 
     def insert_email(self, data: dict) -> int:
         """Insert a single email record. Returns the row id."""
-        cur = self._conn.execute(
-            """INSERT INTO emails
-               (subject, sender, date, summary, category, action_items,
-                reply_strategy, body, source, synced)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                data.get("subject", ""),
-                data.get("sender", ""),
-                data.get("date", ""),
-                data.get("summary", ""),
-                data.get("category", ""),
-                data.get("action_items", ""),
-                data.get("reply_strategy", ""),
-                data.get("body", ""),
-                data.get("source", "local"),
-                1 if data.get("synced") else 0,
-            ),
-        )
-        self._conn.commit()
-        return cur.lastrowid
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO emails
+                   (subject, sender, date, summary, category, action_items,
+                    reply_strategy, body, source, synced)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    data.get("subject", ""),
+                    data.get("sender", ""),
+                    data.get("date", ""),
+                    data.get("summary", ""),
+                    data.get("category", ""),
+                    data.get("action_items", ""),
+                    data.get("reply_strategy", ""),
+                    data.get("body", ""),
+                    data.get("source", "local"),
+                    1 if data.get("synced") else 0,
+                ),
+            )
+            self._conn.commit()
+            return cur.lastrowid
 
     def insert_emails_batch(self, emails: list[dict]) -> int:
         """Insert multiple email records. Returns the number inserted."""
-        self._conn.executemany(
-            """INSERT INTO emails
-               (subject, sender, date, summary, category, action_items,
-                reply_strategy, body, source, synced)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            [
-                (
-                    e.get("subject", ""),
-                    e.get("sender", ""),
-                    e.get("date", ""),
-                    e.get("summary", ""),
-                    e.get("category", ""),
-                    e.get("action_items", ""),
-                    e.get("reply_strategy", ""),
-                    e.get("body", ""),
-                    e.get("source", "local"),
-                    1 if e.get("synced") else 0,
-                )
-                for e in emails
-            ],
-        )
-        self._conn.commit()
-        return len(emails)
+        with self._lock:
+            self._conn.executemany(
+                """INSERT INTO emails
+                   (subject, sender, date, summary, category, action_items,
+                    reply_strategy, body, source, synced)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        e.get("subject", ""),
+                        e.get("sender", ""),
+                        e.get("date", ""),
+                        e.get("summary", ""),
+                        e.get("category", ""),
+                        e.get("action_items", ""),
+                        e.get("reply_strategy", ""),
+                        e.get("body", ""),
+                        e.get("source", "local"),
+                        1 if e.get("synced") else 0,
+                    )
+                    for e in emails
+                ],
+            )
+            self._conn.commit()
+            return len(emails)
 
     def get_all_emails(self) -> list[dict]:
-        rows = self._conn.execute("SELECT * FROM emails ORDER BY id").fetchall()
-        return [dict(r) for r in rows]
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM emails ORDER BY id").fetchall()
+            return [dict(r) for r in rows]
 
     def get_email(self, email_id: int) -> dict | None:
-        row = self._conn.execute("SELECT * FROM emails WHERE id = ?", (email_id,)).fetchone()
-        return dict(row) if row else None
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM emails WHERE id = ?", (email_id,)).fetchone()
+            return dict(row) if row else None
 
     def get_unsynced_emails(self) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT * FROM emails WHERE source = 'local' AND synced = 0"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM emails WHERE source = 'local' AND synced = 0"
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def mark_email_synced(self, email_id: int) -> None:
-        self._conn.execute("UPDATE emails SET synced = 1 WHERE id = ?", (email_id,))
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("UPDATE emails SET synced = 1 WHERE id = ?", (email_id,))
+            self._conn.commit()
 
     def clear_emails(self) -> None:
-        self._conn.execute("DELETE FROM emails")
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM emails")
+            self._conn.commit()
 
     def clear_notion_emails(self) -> None:
         """Remove only Notion-sourced emails, preserving local ones."""
-        self._conn.execute("DELETE FROM emails WHERE source = 'notion'")
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM emails WHERE source = 'notion'")
+            self._conn.commit()
 
     def clear_synced_local_emails(self) -> None:
         """Remove local emails already synced to Notion (they'll be re-imported)."""
-        self._conn.execute("DELETE FROM emails WHERE source = 'local' AND synced = 1")
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM emails WHERE source = 'local' AND synced = 1")
+            self._conn.commit()
 
     # ── action items ───────────────────────────────────────────────────────────
 
     def insert_action_item(self, data: dict) -> int:
-        cur = self._conn.execute(
-            """INSERT INTO action_items
-               (title, priority, status, category, details, source_email,
-                due_date, source, synced)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                data.get("title", ""),
-                data.get("priority", "Medium"),
-                data.get("status", "Open"),
-                data.get("category", "Other"),
-                data.get("details", ""),
-                data.get("source_email", ""),
-                data.get("due_date"),
-                data.get("source", "local"),
-                1 if data.get("synced") else 0,
-            ),
-        )
-        self._conn.commit()
-        return cur.lastrowid
+        with self._lock:
+            cur = self._conn.execute(
+                """INSERT INTO action_items
+                   (title, priority, status, category, details, source_email,
+                    due_date, source, synced)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    data.get("title", ""),
+                    data.get("priority", "Medium"),
+                    data.get("status", "Open"),
+                    data.get("category", "Other"),
+                    data.get("details", ""),
+                    data.get("source_email", ""),
+                    data.get("due_date"),
+                    data.get("source", "local"),
+                    1 if data.get("synced") else 0,
+                ),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def get_open_action_items(self) -> list[dict]:
+        """Return all action items with status 'Open', ordered by priority and due date."""
+        priority_order = "CASE priority WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 ELSE 5 END"
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM action_items WHERE status = 'Open' ORDER BY {priority_order}, due_date ASC"
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_unsynced_action_items(self) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT * FROM action_items WHERE source = 'local' AND synced = 0"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM action_items WHERE source = 'local' AND synced = 0"
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def mark_action_item_synced(self, item_id: int) -> None:
-        self._conn.execute("UPDATE action_items SET synced = 1 WHERE id = ?", (item_id,))
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("UPDATE action_items SET synced = 1 WHERE id = ?", (item_id,))
+            self._conn.commit()
 
     # ── senders ────────────────────────────────────────────────────────────────
 
     def upsert_sender(self, data: dict) -> int:
         """Insert or update a sender record by email. Returns the row id."""
-        now = datetime.now().isoformat()
-        existing = self._conn.execute(
-            "SELECT id, email_count FROM senders WHERE email = ?", (data["email"],)
-        ).fetchone()
+        with self._lock:
+            now = datetime.now().isoformat()
+            existing = self._conn.execute(
+                "SELECT id, email_count FROM senders WHERE email = ?", (data["email"],)
+            ).fetchone()
 
-        if existing:
-            self._conn.execute(
-                """UPDATE senders SET
-                       sender_name = ?, ai_summary = ?, last_contact_date = ?,
-                       email_count = ?, source = ?, synced = ?, updated_at = ?
-                   WHERE id = ?""",
-                (
-                    data.get("sender_name", ""),
-                    data.get("ai_summary", ""),
-                    data.get("last_contact_date", ""),
-                    data.get("email_count", existing["email_count"] + 1),
-                    data.get("source", "local"),
-                    1 if data.get("synced") else 0,
-                    now,
-                    existing["id"],
-                ),
-            )
-            self._conn.commit()
-            return existing["id"]
-        else:
-            cur = self._conn.execute(
-                """INSERT INTO senders
-                   (email, sender_name, manual_comment, ai_summary,
-                    last_contact_date, email_count, source, synced, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    data["email"],
-                    data.get("sender_name", ""),
-                    data.get("manual_comment", ""),
-                    data.get("ai_summary", ""),
-                    data.get("last_contact_date", ""),
-                    data.get("email_count", 1),
-                    data.get("source", "local"),
-                    1 if data.get("synced") else 0,
-                    now,
-                    now,
-                ),
-            )
-            self._conn.commit()
-            return cur.lastrowid
+            if existing:
+                self._conn.execute(
+                    """UPDATE senders SET
+                           sender_name = ?, ai_summary = ?, last_contact_date = ?,
+                           email_count = ?, source = ?, synced = ?, updated_at = ?
+                       WHERE id = ?""",
+                    (
+                        data.get("sender_name", ""),
+                        data.get("ai_summary", ""),
+                        data.get("last_contact_date", ""),
+                        data.get("email_count", existing["email_count"] + 1),
+                        data.get("source", "local"),
+                        1 if data.get("synced") else 0,
+                        now,
+                        existing["id"],
+                    ),
+                )
+                self._conn.commit()
+                return existing["id"]
+            else:
+                cur = self._conn.execute(
+                    """INSERT INTO senders
+                       (email, sender_name, manual_comment, ai_summary,
+                        last_contact_date, email_count, source, synced, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        data["email"],
+                        data.get("sender_name", ""),
+                        data.get("manual_comment", ""),
+                        data.get("ai_summary", ""),
+                        data.get("last_contact_date", ""),
+                        data.get("email_count", 1),
+                        data.get("source", "local"),
+                        1 if data.get("synced") else 0,
+                        now,
+                        now,
+                    ),
+                )
+                self._conn.commit()
+                return cur.lastrowid
 
     def upsert_senders_batch(self, senders: list[dict]) -> int:
         """Bulk upsert sender records from Notion.
@@ -255,66 +279,71 @@ class LocalDB:
         For new senders: inserts the full record with source='notion', synced=1.
         Returns the number of records upserted.
         """
-        now = datetime.now().isoformat()
-        count = 0
-        cur = self._conn.cursor()
-        for s in senders:
-            email = s.get("email", "")
-            if not email:
-                continue
-            existing = cur.execute(
-                "SELECT id FROM senders WHERE email = ?", (email,)
-            ).fetchone()
-            if existing:
-                cur.execute(
-                    """UPDATE senders SET manual_comment = ?, updated_at = ?
-                       WHERE id = ?""",
-                    (
-                        s.get("manual_comment", ""),
-                        now,
-                        existing["id"],
-                    ),
-                )
-            else:
-                cur.execute(
-                    """INSERT INTO senders
-                       (email, sender_name, manual_comment, ai_summary,
-                        last_contact_date, email_count, source, synced,
-                        created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, 'notion', 1, ?, ?)""",
-                    (
-                        email,
-                        s.get("name", ""),
-                        s.get("manual_comment", ""),
-                        s.get("ai_summary", ""),
-                        s.get("last_contact_date", ""),
-                        s.get("email_count", 0),
-                        now,
-                        now,
-                    ),
-                )
-            count += 1
-        self._conn.commit()
-        return count
+        with self._lock:
+            now = datetime.now().isoformat()
+            count = 0
+            cur = self._conn.cursor()
+            for s in senders:
+                email = s.get("email", "")
+                if not email:
+                    continue
+                existing = cur.execute(
+                    "SELECT id FROM senders WHERE email = ?", (email,)
+                ).fetchone()
+                if existing:
+                    cur.execute(
+                        """UPDATE senders SET manual_comment = ?, updated_at = ?
+                           WHERE id = ?""",
+                        (
+                            s.get("manual_comment", ""),
+                            now,
+                            existing["id"],
+                        ),
+                    )
+                else:
+                    cur.execute(
+                        """INSERT INTO senders
+                           (email, sender_name, manual_comment, ai_summary,
+                            last_contact_date, email_count, source, synced,
+                            created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, 'notion', 1, ?, ?)""",
+                        (
+                            email,
+                            s.get("name", ""),
+                            s.get("manual_comment", ""),
+                            s.get("ai_summary", ""),
+                            s.get("last_contact_date", ""),
+                            s.get("email_count", 0),
+                            now,
+                            now,
+                        ),
+                    )
+                count += 1
+            self._conn.commit()
+            return count
 
     def get_sender(self, email: str) -> dict | None:
-        row = self._conn.execute(
-            "SELECT * FROM senders WHERE email = ?", (email,)
-        ).fetchone()
-        return dict(row) if row else None
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM senders WHERE email = ?", (email,)
+            ).fetchone()
+            return dict(row) if row else None
 
     def get_unsynced_senders(self) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT * FROM senders WHERE source = 'local' AND synced = 0"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM senders WHERE source = 'local' AND synced = 0"
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def mark_sender_synced(self, sender_id: int) -> None:
-        self._conn.execute("UPDATE senders SET synced = 1 WHERE id = ?", (sender_id,))
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("UPDATE senders SET synced = 1 WHERE id = ?", (sender_id,))
+            self._conn.commit()
 
     # ── lifecycle ──────────────────────────────────────────────────────────────
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
         log.info("LocalDB closed")
