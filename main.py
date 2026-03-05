@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Email Analyzer — reads emails from Google Sheets, analyzes with Claude, writes results back."""
 
 import argparse
@@ -63,14 +62,6 @@ def main():
     try:
         # First time it will fire a confirmation window
         gmail = GmailClient()
-
-        # Create a test draft
-        draft_id = gmail.create_draft(
-            message="Test draft from Python",
-            recipient="your-email@example.com",
-            subject="Test Draft",
-        )
-        print(f"Draft created: {draft_id}")
     except ValueError as e:
         log.error("Gmail drafting client failed: %s", e)
         sys.exit(f"Error: {e}")

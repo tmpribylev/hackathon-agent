@@ -3,6 +3,7 @@
 from __future__ import annotations
 import logging
 import re
+from datetime import datetime
 from notion_client import Client
 from src.config import DEFAULT_CATEGORY, PRIORITY_TAG_RE, DEFAULT_PRIORITY, NOTION_API_VERSION
 
@@ -69,9 +70,10 @@ class NotionClient:
         Returns None if sender not found or on error.
         """
         try:
-            response = self._client.databases.query(
-                database_id=database_id,
-                filter={"property": "Email", "title": {"equals": email}},
+            response = self._client.request(
+                path=f"databases/{database_id}/query",
+                method="POST",
+                body={"filter": {"property": "Email", "title": {"equals": email}}},
             )
 
             if not response.get("results"):
@@ -111,10 +113,12 @@ class NotionClient:
         If sender is new: creates page with all fields.
         Preserves Manual Comment field (never overwrites).
         """
+        last_email_date = self._normalize_date(last_email_date)
         try:
-            response = self._client.databases.query(
-                database_id=database_id,
-                filter={"property": "Email", "title": {"equals": email}},
+            response = self._client.request(
+                path=f"databases/{database_id}/query",
+                method="POST",
+                body={"filter": {"property": "Email", "title": {"equals": email}}},
             )
 
             if response.get("results"):
@@ -153,6 +157,25 @@ class NotionClient:
 
         except Exception as exc:
             log.error("Failed to upsert sender %s: %s", email, exc)
+
+    @staticmethod
+    def _normalize_date(date_str: str) -> str:
+        """Convert a human-readable date string to ISO 8601 (YYYY-MM-DD).
+
+        Handles formats like "March 4, 2026 at 10:35 AM CET".
+        Returns the original string if already ISO 8601 or unparseable.
+        """
+        if re.match(r"\d{4}-\d{2}-\d{2}", date_str):
+            return date_str[:10]
+        cleaned = re.sub(r"\s+at\s+", " ", date_str)
+        cleaned = re.sub(r"\s+[A-Z]{2,5}$", "", cleaned)
+        for fmt in ("%B %d, %Y %I:%M %p", "%B %d, %Y", "%b %d, %Y %I:%M %p", "%b %d, %Y"):
+            try:
+                return datetime.strptime(cleaned, fmt).date().isoformat()
+            except ValueError:
+                continue
+        log.warning("Could not parse date '%s', using as-is", date_str)
+        return date_str
 
     @staticmethod
     def _extract_rich_text(prop: dict) -> str:
