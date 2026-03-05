@@ -1,8 +1,8 @@
 # Email Analyzer
 
-Analyzes emails from a Google Sheet using Claude — produces summaries, categories, action items, and reply strategies. Results are written back to the sheet, displayed in a color-coded console table, and optionally pushed to Notion.
+Analyzes emails from a Google Sheet using Claude — produces summaries, categories, action items, and reply strategies. Results are written back to the sheet, cached in a local SQLite database, displayed in a color-coded console table, and optionally synced to Notion.
 
-Includes a **Telegram bot** for interactive browsing, chatting about analyzed emails, generating draft replies, and saving them directly as **Gmail drafts**.
+Includes a **Telegram bot** for interactive browsing, morning briefings, chatting about analyzed emails, generating draft replies, and saving them directly as **Gmail drafts**.
 
 ## Prerequisites
 
@@ -61,6 +61,10 @@ NOTION_SENDER_DB_ID=your-notion-sender-database-id
 
 # Telegram bot (optional)
 TELEGRAM_BOT_TOKEN=your-telegram-bot-token
+
+# LLM input sanitisation (optional) — pipe-separated strings to strip before
+# sending to the API (e.g. content that triggers API errors)
+LLM_BLOCKED_STRINGS=bad string one|another bad string
 ```
 
 ---
@@ -232,7 +236,9 @@ The Telegram bot provides an interactive interface for email analysis.
 | Command | Description |
 |---|---|
 | `/analyze` | Run email analysis pipeline |
+| `/briefing` | Morning briefing — overdue, due today, open action items + LLM recommendation |
 | `/load` | Load previous analyses from Notion |
+| `/sync` | Sync contact list from Notion into local DB |
 | `/emails` | Browse analyzed emails with pagination |
 | `/actions` | Show all action items |
 | `/reset` | Clear chat history |
@@ -240,11 +246,13 @@ The Telegram bot provides an interactive interface for email analysis.
 
 ### Features
 
+- **Morning briefing** — `/briefing` shows overdue items, items due today, all open action items, and a short LLM-generated recommendation for what to tackle first
 - **Email browsing** — Paginated list of analyzed emails with inline keyboard navigation
 - **Detail view** — View full email analysis: summary, category, action items, reply strategy
 - **Draft reply generation** — Generate a professional reply using Claude, based on the email context and reply strategy
 - **Save as Gmail Draft** — One-click button to save the generated reply as a draft in your Gmail inbox (requires Gmail API setup)
 - **Free-text chat** — Send any message to chat about the analyzed emails with full conversation history
+- **Contact sync** — `/sync` downloads sender profiles (including manual notes) from Notion into the local DB for faster lookups
 
 ### Gmail draft flow
 
@@ -309,15 +317,19 @@ Already-processed rows (those with an existing Summary value) are skipped on re-
 ├── bot.py                         # Telegram bot entry point
 ├── src/
 │   ├── config.py                  # Config dataclass, loads .env, all constants
+│   ├── prompts.py                 # All LLM prompt templates
 │   ├── logger.py                  # Logging setup (daily log files)
 │   ├── llm/
-│   │   └── client.py              # LLMClient (Anthropic SDK wrapper)
+│   │   └── client.py              # LLMClient (Anthropic SDK wrapper + input sanitisation)
 │   ├── sheets/
 │   │   └── client.py              # SheetsClient (Google Sheets auth + read/write)
 │   ├── notion/
-│   │   └── client.py              # NotionClient (action items + email analyses)
+│   │   └── client.py              # NotionClient (action items + email analyses + senders)
 │   ├── gmail/
 │   │   └── client.py              # GmailClient (Gmail draft creation)
+│   ├── db/
+│   │   ├── client.py              # LocalDB (thread-safe SQLite cache)
+│   │   └── sync.py                # SyncManager (LocalDB <-> Notion two-way sync)
 │   ├── agents/
 │   │   └── email_analyzer.py      # EmailAnalyzer (prompt, parsing, orchestration)
 │   ├── console/
@@ -325,9 +337,11 @@ Already-processed rows (those with an existing Summary value) are skipped on re-
 │   └── telegram/
 │       ├── handlers.py            # Telegram command & callback handlers
 │       ├── service.py             # EmailBotService (business logic layer)
-│       ├── context_store.py       # In-memory email data store
+│       ├── context_store.py       # AnalyzedEmail dataclass
 │       ├── keyboards.py           # Inline keyboard builders
 │       └── formatters.py          # Message formatting utilities
+├── data/
+│   └── email_cache.db             # SQLite cache (auto-created, do not commit)
 ├── requirements.txt
 ├── pyproject.toml                 # Black & Pylint config
 ├── .env                           # API keys (do not commit)
@@ -361,9 +375,21 @@ Already-processed rows (those with an existing Summary value) are skipped on re-
 
 All modules log via Python's `logging` module. Log files are written daily to `logs/YYYY-MM-DD.log`. No logs are printed to the console — console output uses `print()` directly.
 
-%TODO
+---
 
-Notion connectivity is slow and expensive.
-On start, cache both Notion tables to local Sqlite storage locations, these are rocket fast for address retrievals and changes.
-On update/insert, mark rows as dirty.
-On back sync, update only contacts with dirty rows.
+## Local database & sync
+
+All analysis results are cached in a local SQLite database (`data/email_cache.db`), which provides:
+
+- **Fast lookups** — sender context and email data are read from SQLite instead of querying Notion on every request
+- **Offline operation** — the Telegram bot works without Notion connectivity
+- **Two-way sync** — unsynced local records are pushed to Notion on bot shutdown (or manually). Loading from Notion imports records back into SQLite
+- **Thread safety** — all DB access is serialized via a threading lock, safe for parallel LLM workers
+
+Each record tracks its provenance (`source`: `local` or `notion`) and a `synced` flag. Only dirty local records are pushed to Notion, avoiding redundant API calls.
+
+---
+
+## Input sanitisation
+
+The `LLM_BLOCKED_STRINGS` environment variable (pipe-separated) defines strings that are automatically replaced with `[REDACTED]` before any text is sent to the Anthropic API. This guards against content that triggers API errors.

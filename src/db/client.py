@@ -208,14 +208,6 @@ class LocalDB:
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def get_open_action_items(self) -> list[dict]:
-        """Return all action items with status 'Open', ordered by priority and due date."""
-        priority_order = "CASE priority WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 WHEN 'Low' THEN 4 ELSE 5 END"
-        rows = self._conn.execute(
-            f"SELECT * FROM action_items WHERE status = 'Open' ORDER BY {priority_order}, due_date ASC"
-        ).fetchall()
-        return [dict(r) for r in rows]
-
     def get_unsynced_action_items(self) -> list[dict]:
         with self._lock:
             rows = self._conn.execute(
