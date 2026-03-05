@@ -5,11 +5,12 @@ from __future__ import annotations
 import datetime
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from src.config import (
     CATEGORIES, DEFAULT_CATEGORY, EMAIL_ANALYSIS_MAX_TOKENS, SENDER_SUMMARY_MAX_TOKENS,
-    PRIORITY_TAG_RE, DEFAULT_PRIORITY,
+    PRIORITY_TAG_RE, DEFAULT_PRIORITY, LLM_MAX_WORKERS,
 )
 from src.prompts import EMAIL_ANALYSIS_PROMPT, SENDER_SUMMARY_PROMPT
 from src.llm.client import LLMClient
@@ -75,32 +76,50 @@ class EmailAnalyzer:
         if already_done:
             log.info("Skipping %d already-processed row(s)", len(already_done))
 
-        raw_results: list[tuple[str, str, str, str] | None] = []
+        raw_results: list[tuple[str, str, str, str] | None] = [None] * len(rows)
         analysis_results: list[AnalysisResult] = []
         to_process = len(rows) - len(already_done)
         log.info("Will analyze %d email(s)", to_process)
 
-        processed = 0
+        # Collect jobs for parallel execution
+        jobs: list[tuple[int, str, str, str, str]] = []
         for i, row in enumerate(rows):
             if i in already_done:
-                raw_results.append(None)
                 continue
-            processed += 1
-            sender = row[col["sender"]]
-            date = row[col["date"]]
-            subject = row[col["subject"]]
-            body = row[col["body"]]
-            log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
-            summary, category, action_items, reply_strategy, sender_data = (
-                self._analyze_email(sender, date, subject, body)
-            )
-            log.info("Result — category=%s, summary=%s", category, summary)
-            raw_results.append((summary, category, action_items, reply_strategy))
+            jobs.append((
+                i,
+                row[col["sender"]],
+                row[col["date"]],
+                row[col["subject"]],
+                row[col["body"]],
+            ))
 
+        # Run email analyses in parallel
+        job_results: dict[int, tuple[str, str, str, str, dict | None]] = {}
+        workers = min(LLM_MAX_WORKERS, len(jobs)) if jobs else 1
+        log.info("Analyzing %d email(s) with %d worker(s)", len(jobs), workers)
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(self._analyze_email, sender, date, subject, body): (
+                    idx, sender, date, subject
+                )
+                for idx, sender, date, subject, body in jobs
+            }
+            for future in as_completed(futures):
+                idx, sender, date, subject = futures[future]
+                summary, category, action_items, reply_strategy, sender_data = future.result()
+                log.info("Result — category=%s, summary=%s", category, summary)
+                job_results[idx] = (summary, category, action_items, reply_strategy, sender_data)
+
+        # Process results in original row order (sender upserts stay sequential)
+        for idx, sender, date, subject, body in jobs:
+            summary, category, action_items, reply_strategy, sender_data = job_results[idx]
+            raw_results[idx] = (summary, category, action_items, reply_strategy)
             self._upsert_sender_if_configured(sender, date, summary, sender_data)
             analysis_results.append(
                 AnalysisResult(
-                    row_index=i,
+                    row_index=idx,
                     sender=sender,
                     date=date,
                     subject=subject,
@@ -138,28 +157,47 @@ class EmailAnalyzer:
         if already_done:
             print(f"Skipping {len(already_done)} already-processed row(s).")
 
-        results: list[tuple[str, str, str, str] | None] = []
+        results: list[tuple[str, str, str, str] | None] = [None] * len(rows)
         to_process = len(rows) - len(already_done)
         print(f"Analyzing {to_process} email(s) with Claude\u2026\n")
 
-        processed = 0
+        # Collect jobs
+        jobs: list[tuple[int, str, str, str, str]] = []
         for i, row in enumerate(rows):
             if i in already_done:
-                results.append(None)
                 continue
-            processed += 1
-            sender = row[col["sender"]]
-            date = row[col["date"]]
-            subject = row[col["subject"]]
-            body = row[col["body"]]
-            log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
-            print(f"  [{processed}/{to_process}] {subject[:60]}", end="\r", flush=True)
-            summary, category, action_items, reply_strategy, sender_data = (
-                self._analyze_email(sender, date, subject, body)
-            )
-            log.info("Result — category=%s, summary=%s", category, summary)
-            results.append((summary, category, action_items, reply_strategy))
+            jobs.append((
+                i,
+                row[col["sender"]],
+                row[col["date"]],
+                row[col["subject"]],
+                row[col["body"]],
+            ))
 
+        # Run email analyses in parallel
+        job_results: dict[int, tuple[str, str, str, str, dict | None]] = {}
+        workers = min(LLM_MAX_WORKERS, len(jobs)) if jobs else 1
+        completed_count = 0
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(self._analyze_email, sender, date, subject, body): (
+                    idx, sender, date, subject
+                )
+                for idx, sender, date, subject, body in jobs
+            }
+            for future in as_completed(futures):
+                idx, sender, date, subject = futures[future]
+                summary, category, action_items, reply_strategy, sender_data = future.result()
+                completed_count += 1
+                log.info("Result — category=%s, summary=%s", category, summary)
+                print(f"  [{completed_count}/{to_process}] {subject[:60]}", end="\r", flush=True)
+                job_results[idx] = (summary, category, action_items, reply_strategy, sender_data)
+
+        # Process results in original row order
+        for idx, sender, date, subject, body in jobs:
+            summary, category, action_items, reply_strategy, sender_data = job_results[idx]
+            results[idx] = (summary, category, action_items, reply_strategy)
             self._upsert_sender_if_configured(sender, date, summary, sender_data)
 
         print(" " * 80, end="\r")  # clear progress line
