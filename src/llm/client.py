@@ -4,9 +4,18 @@ import logging
 
 import anthropic
 
-from src.config import Config, DEFAULT_MAX_TOKENS, DEFAULT_MODEL
+from src.config import Config, DEFAULT_MAX_TOKENS, DEFAULT_MODEL, LLM_BLOCKED_STRINGS
 
 log = logging.getLogger(__name__)
+
+
+def _sanitize(text: str) -> str:
+    """Remove blocked strings from text before sending to the LLM."""
+    for blocked in LLM_BLOCKED_STRINGS:
+        if blocked in text:
+            log.warning("Stripped blocked string (%d chars) from LLM input", len(blocked))
+            text = text.replace(blocked, "[REDACTED]")
+    return text
 
 
 class LLMClient:
@@ -20,6 +29,7 @@ class LLMClient:
         self, prompt: str, max_tokens: int = DEFAULT_MAX_TOKENS, model: str = DEFAULT_MODEL
     ) -> str:
         """Send a single-turn prompt and return the response text."""
+        prompt = _sanitize(prompt)
         log.debug("LLM request: model=%s, max_tokens=%d", model, max_tokens)
         message = self._client.messages.create(
             model=model,
@@ -38,6 +48,11 @@ class LLMClient:
         model: str = DEFAULT_MODEL,
     ) -> str:
         """Multi-turn conversation. *messages* is a list of {"role", "content"} dicts."""
+        messages = [
+            {**m, "content": _sanitize(m["content"])} for m in messages
+        ]
+        if system:
+            system = _sanitize(system)
         log.debug("LLM chat: model=%s, turns=%d, max_tokens=%d", model, len(messages), max_tokens)
         kwargs: dict = {
             "model": model,

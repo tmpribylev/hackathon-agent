@@ -62,6 +62,41 @@ class NotionClient:
             log.debug("Created Notion page: %s [%s]", item["title"], item["priority"])
         return len(items)
 
+    def write_single_action_item(
+        self,
+        database_id: str,
+        *,
+        title: str,
+        priority: str = "Medium",
+        category: str = DEFAULT_CATEGORY,
+        details: str = "",
+        source_email: str = "",
+        due_date: str | None = None,
+    ) -> None:
+        """Write a single pre-parsed action item to Notion."""
+        properties: dict = {
+            "Action Item": {"title": [{"text": {"content": title}}]},
+            "Priority": {"select": {"name": priority}},
+            "Status": {"select": {"name": "Open"}},
+            "Category": {"select": {"name": category}},
+        }
+        if details:
+            properties["Details"] = {
+                "rich_text": [{"text": {"content": details[:2000]}}]
+            }
+        if source_email:
+            properties["Source Email"] = {
+                "rich_text": [{"text": {"content": source_email[:2000]}}]
+            }
+        if due_date:
+            properties["Due Date"] = {"date": {"start": due_date}}
+
+        self._client.pages.create(
+            parent={"database_id": database_id},
+            properties=properties,
+        )
+        log.debug("Created single Notion action item: %s [%s]", title, priority)
+
     def get_sender(self, database_id: str, email: str) -> dict | None:
         """Query sender database by email address.
 
@@ -192,6 +227,56 @@ class NotionClient:
         if not date_obj:
             return ""
         return date_obj.get("start", "")
+    def read_all_senders(self, database_id: str) -> list[dict]:
+        """Read all sender pages from the Notion sender database.
+
+        Returns list of dicts with keys: email, name, manual_comment,
+        ai_summary, last_contact_date, email_count.
+        """
+        results: list[dict] = []
+        has_more = True
+        start_cursor = None
+
+        while has_more:
+            body: dict = {"page_size": 100}
+            if start_cursor:
+                body["start_cursor"] = start_cursor
+
+            try:
+                response = self._client.request(
+                    path=f"databases/{database_id}/query",
+                    method="POST",
+                    body=body,
+                )
+            except Exception as exc:
+                log.error("Failed to query sender DB %s: %s", database_id, exc)
+                return results
+
+            for page in response.get("results", []):
+                props = page.get("properties", {})
+                results.append(
+                    {
+                        "email": self._get_title_text(props.get("Email", {})),
+                        "name": self._extract_rich_text(props.get("Sender Name", {})),
+                        "manual_comment": self._extract_rich_text(
+                            props.get("Manual Comment", {})
+                        ),
+                        "ai_summary": self._extract_rich_text(props.get("AI Summary", {})),
+                        "last_contact_date": self._extract_date(
+                            props.get("Last Contact Date", {})
+                        ),
+                        "email_count": props.get("Email Count", {}).get("number", 0),
+                    }
+                )
+
+            has_more = response.get("has_more", False)
+            start_cursor = response.get("next_cursor")
+
+        log.info(
+            "Read %d sender(s) from Notion database %s", len(results), database_id
+        )
+        return results
+
     def write_email_analysis(self, database_id: str, email_data: dict) -> None:
         """Write a full email analysis page to the Notion Emails database.
 

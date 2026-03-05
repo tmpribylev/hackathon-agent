@@ -17,6 +17,7 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 DEFAULT_MAX_TOKENS = 1024
 EMAIL_ANALYSIS_MAX_TOKENS = 2048
 SENDER_SUMMARY_MAX_TOKENS = 256
+LLM_MAX_WORKERS = 4
 
 # ── Telegram bot ──────────────────────────────────────────────────────────────
 TG_MAX_MESSAGE_LENGTH = 4096
@@ -43,6 +44,19 @@ GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 # ── Gmail ────────────────────────────────────────────────────────────────────
 GMAIL_TOKEN_PATH = "gmail_token.json"
 GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]
+
+# ── Local DB cache ───────────────────────────────────────────────────────────
+DEFAULT_DB_PATH = "data/email_cache.db"
+
+# ── LLM input blocklist ─────────────────────────────────────────────────────
+# Pipe-separated list of strings that must be stripped from any text sent to
+# the LLM. Some content triggers API errors and cannot be sent.
+# Example .env: LLM_BLOCKED_STRINGS="bad string one|another bad string"
+LLM_BLOCKED_STRINGS: list[str] = [
+    s.strip()
+    for s in os.getenv("LLM_BLOCKED_STRINGS", "").split("|")
+    if s.strip()
+]
 
 
 @dataclass

@@ -30,6 +30,7 @@ HELP_TEXT = (
     "<b>Email Analyzer Bot</b>\n\n"
     "/analyze — Run email analysis pipeline\n"
     "/load — Load previous analyses from Notion\n"
+    "/sync — Sync contact list from Notion\n"
     "/emails — Browse analyzed emails\n"
     "/actions — Show all action items\n"
     "/reset — Clear chat history\n"
@@ -80,6 +81,25 @@ async def load_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception as exc:
         log.error("Load from Notion failed: %s", exc)
         await update.message.reply_text(f"Load failed: {_esc(str(exc))}", parse_mode="HTML")
+
+
+async def sync_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/sync from user=%d", update.effective_user.id)
+    service = _get_service(context)
+    await update.message.reply_text("Syncing contacts from Notion\u2026")
+    try:
+        count = await asyncio.to_thread(service.sync_contacts)
+        if count:
+            await update.message.reply_text(f"Synced {count} contact(s) from Notion.")
+        else:
+            await update.message.reply_text(
+                "No contacts synced (Notion sender DB not configured or empty)."
+            )
+    except Exception as exc:
+        log.error("Contact sync failed: %s", exc)
+        await update.message.reply_text(
+            f"Sync failed: {_esc(str(exc))}", parse_mode="HTML"
+        )
 
 
 async def emails_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
