@@ -159,6 +159,11 @@ class LocalDB:
         self._conn.execute("DELETE FROM emails WHERE source = 'notion'")
         self._conn.commit()
 
+    def clear_synced_local_emails(self) -> None:
+        """Remove local emails already synced to Notion (they'll be re-imported)."""
+        self._conn.execute("DELETE FROM emails WHERE source = 'local' AND synced = 1")
+        self._conn.commit()
+
     # ── action items ───────────────────────────────────────────────────────────
 
     def insert_action_item(self, data: dict) -> int:

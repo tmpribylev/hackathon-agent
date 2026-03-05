@@ -144,6 +144,7 @@ class SyncManager:
         pages = self._notion.read_email_analyses(self._notion_emails_db_id)
 
         self._db.clear_notion_emails()
+        self._db.clear_synced_local_emails()
         self._db.insert_emails_batch(
             [
                 {
