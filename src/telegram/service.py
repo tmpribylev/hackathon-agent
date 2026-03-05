@@ -35,32 +35,13 @@ class EmailBotService:
     # ── analysis ──────────────────────────────────────────────────────────────
 
     def run_analysis(self) -> int:
-        """Run the email analyzer, write to Notion emails DB, load into store.
+        """Run the email analyzer, load results into store.
 
         Returns the number of emails analyzed.
         """
         log.info("Starting email analysis pipeline")
         results = self._analyzer.analyze()
         log.info("Analysis complete: %d email(s) analyzed", len(results))
-
-        if results and self._notion and self._notion_emails_db_id:
-            for r in results:
-                try:
-                    self._notion.write_email_analysis(
-                        self._notion_emails_db_id,
-                        {
-                            "subject": r.subject,
-                            "sender": r.sender,
-                            "date": r.date,
-                            "summary": r.summary,
-                            "category": r.category,
-                            "action_items": r.action_items,
-                            "reply_strategy": r.reply_strategy,
-                            "body": r.body,
-                        },
-                    )
-                except Exception as exc:
-                    log.error("Failed to write email analysis to Notion: %s", exc)
 
         self.store.load(self._results_to_analyzed(results))
         return len(results)

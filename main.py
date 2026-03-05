@@ -68,7 +68,8 @@ def main():
 
     try:
         EmailAnalyzer(
-            llm, sheets, renderer, notion, notion_db_id, config.notion_sender_db_id
+            llm, sheets, renderer, notion, notion_db_id,
+            config.notion_sender_db_id, config.notion_emails_db_id,
         ).run()
     except ValueError as e:
         log.error("Analyzer failed: %s", e)

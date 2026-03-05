@@ -41,6 +41,7 @@ class EmailAnalyzer:
         notion: NotionClient | None = None,
         notion_db_id: str | None = None,
         notion_sender_db_id: str | None = None,
+        notion_emails_db_id: str | None = None,
     ) -> None:
         self._llm = llm
         self._sheets = sheets
@@ -48,6 +49,7 @@ class EmailAnalyzer:
         self._notion = notion
         self._notion_db_id = notion_db_id
         self._notion_sender_db_id = notion_sender_db_id
+        self._notion_emails_db_id = notion_emails_db_id
         self._today = datetime.date.today().isoformat()
 
     # ── public entry points ───────────────────────────────────────────────────
@@ -84,11 +86,13 @@ class EmailAnalyzer:
             subject = row[col["subject"]]
             body = row[col["body"]]
             log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
-            summary, category, action_items, reply_strategy, _, _ = (
+            summary, category, action_items, reply_strategy = (
                 self._analyze_email(sender, date, subject, body)
             )
             log.info("Result — category=%s, summary=%s", category, summary)
             raw_results.append((summary, category, action_items, reply_strategy))
+
+            self._upsert_sender_if_configured(sender, date, summary)
             analysis_results.append(
                 AnalysisResult(
                     row_index=i,
@@ -109,6 +113,9 @@ class EmailAnalyzer:
 
         if to_process > 0 and self._notion and self._notion_db_id:
             self._push_action_items_to_notion(rows, raw_results, col)
+
+        if to_process > 0 and self._notion and self._notion_emails_db_id:
+            self._push_emails_to_notion(rows, raw_results, col)
 
         return analysis_results
 
@@ -140,24 +147,13 @@ class EmailAnalyzer:
             body = row[col["body"]]
             log.info("Analyzing email %d/%d: %s", processed, to_process, subject)
             print(f"  [{processed}/{to_process}] {subject[:60]}", end="\r", flush=True)
-            summary, category, action_items, reply_strategy, email_address, sender_summary = (
+            summary, category, action_items, reply_strategy = (
                 self._analyze_email(sender, date, subject, body)
             )
             log.info("Result — category=%s, summary=%s", category, summary)
             results.append((summary, category, action_items, reply_strategy))
 
-            # Upsert sender in Notion
-            if self._notion and self._notion_sender_db_id:
-                try:
-                    self._notion.upsert_sender(
-                        self._notion_sender_db_id,
-                        email_address,
-                        sender,
-                        sender_summary,
-                        date,
-                    )
-                except Exception as exc:
-                    log.error("Failed to upsert sender for row %d: %s", i + 2, exc)
+            self._upsert_sender_if_configured(sender, date, summary)
 
         print(" " * 80, end="\r")  # clear progress line
 
@@ -168,6 +164,9 @@ class EmailAnalyzer:
 
         if to_process > 0 and self._notion and self._notion_db_id:
             self._push_action_items_to_notion(rows, results, col, verbose=True)
+
+        if to_process > 0 and self._notion and self._notion_emails_db_id:
+            self._push_emails_to_notion(rows, results, col)
 
         self._renderer.render(rows, results, col["sender"], col["date"], col["subject"])
         last_col = SheetsClient.col_to_letter(out_start_col + 2)
@@ -269,6 +268,37 @@ class EmailAnalyzer:
                 msg += f" ({failed} failed)"
             print(msg)
 
+    def _push_emails_to_notion(
+        self,
+        rows: list[list[str]],
+        results: list[tuple[str, str, str, str] | None],
+        col: dict[str, int],
+    ) -> None:
+        written = 0
+        for i, result in enumerate(results):
+            if result is None:
+                continue
+            summary, category, action_items, reply_strategy = result
+            row = rows[i]
+            try:
+                self._notion.write_email_analysis(
+                    self._notion_emails_db_id,
+                    {
+                        "subject": row[col["subject"]],
+                        "sender": row[col["sender"]],
+                        "date": row[col["date"]],
+                        "summary": summary,
+                        "category": category,
+                        "action_items": action_items,
+                        "reply_strategy": reply_strategy,
+                        "body": row[col["body"]],
+                    },
+                )
+                written += 1
+            except Exception as exc:
+                log.error("Failed to write email analysis to Notion for row %d: %s", i + 2, exc)
+        log.info("Wrote %d email analysis page(s) to Notion", written)
+
     def _build_prompt(self, sender: str, date: str, subject: str, body: str, context: str = "") -> str:
         return EMAIL_ANALYSIS_PROMPT.format(
             today=self._today,
@@ -290,22 +320,47 @@ class EmailAnalyzer:
         )
         return self._llm.complete(prompt, max_tokens=SENDER_SUMMARY_MAX_TOKENS)
 
+    def _upsert_sender_if_configured(
+        self, sender: str, date: str, summary: str
+    ) -> None:
+        """Generate a person-focused sender summary and upsert in Notion.
+
+        No-op if Notion sender DB is not configured.
+        """
+        if not self._notion or not self._notion_sender_db_id:
+            return
+
+        email_address = self._extract_email_address(sender)
+        sender_data = self._notion.get_sender(self._notion_sender_db_id, email_address)
+        previous_ai_summary = sender_data.get("ai_summary", "") if sender_data else ""
+
+        sender_summary = self._generate_sender_summary(sender, previous_ai_summary, summary)
+
+        try:
+            self._notion.upsert_sender(
+                self._notion_sender_db_id,
+                email_address,
+                sender,
+                sender_summary,
+                date,
+            )
+        except Exception as exc:
+            log.error("Failed to upsert sender %s: %s", sender, exc)
+
     def _analyze_email(
         self, sender: str, date: str, subject: str, body: str
-    ) -> tuple[str, str, str, str, str, str]:
-        """Return (summary, category, action_items, reply_strategy, email_address, sender_summary)."""
-        email_address = self._extract_email_address(sender)
+    ) -> tuple[str, str, str, str]:
+        """Return (summary, category, action_items, reply_strategy)."""
         context = ""
-        previous_ai_summary = ""
 
         # Lookup sender context if Notion configured
         if self._notion and self._notion_sender_db_id:
+            email_address = self._extract_email_address(sender)
             sender_data = self._notion.get_sender(self._notion_sender_db_id, email_address)
             if sender_data:
-                previous_ai_summary = sender_data.get("ai_summary", "")
                 context = self._build_context_section(
                     sender_data.get("manual_comment", ""),
-                    previous_ai_summary,
+                    sender_data.get("ai_summary", ""),
                 )
 
         prompt = self._build_prompt(sender, date, subject, body, context)
@@ -335,6 +390,4 @@ class EmailAnalyzer:
         action_items = extract_section("Action Items:", "Reply Strategy:")
         reply_strategy = extract_section("Reply Strategy:", None)
 
-        sender_summary = self._generate_sender_summary(sender, previous_ai_summary, summary)
-
-        return summary, category, action_items, reply_strategy, email_address, sender_summary
+        return summary, category, action_items, reply_strategy

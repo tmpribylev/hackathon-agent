@@ -74,7 +74,10 @@ def main() -> None:
 
     llm = LLMClient(config)
     renderer = EmailTableRenderer()
-    analyzer = EmailAnalyzer(llm, sheets, renderer, notion, config.notion_db_id)
+    analyzer = EmailAnalyzer(
+        llm, sheets, renderer, notion, config.notion_db_id,
+        config.notion_sender_db_id, config.notion_emails_db_id,
+    )
 
     service = EmailBotService(
         analyzer=analyzer,
