@@ -1,8 +1,16 @@
-# Email Analyzer
+# Email Triage Agent 
 
-Analyzes emails from a Google Sheet using Claude — produces summaries, categories, action items, and reply strategies. Results are written back to the sheet, cached in a local SQLite database, displayed in a color-coded console table, and optionally synced to Notion.
+Analyzes emails from a Google Sheet using Claude — produces summaries, categories, action items, and reply strategies. Results are written back to the sheet, cached in a local SQLite database, displayed in a color-coded console table, and optionally synced to Notion via two-way sync.
 
-Includes a **Telegram bot** for interactive browsing, morning briefings, chatting about analyzed emails, generating draft replies, and saving them directly as **Gmail drafts**.
+Includes a **Telegram bot** for interactive browsing, morning briefings, Notion sync, chatting about analyzed emails, generating draft replies, and saving them directly as **Gmail drafts**.
+
+## Architecture
+
+![Architecture diagram](agent_architecture.png)
+
+## Pitch presentation
+
+See [`Email Triage Agent Pitch.html`](Email%20Triage%20Agent%20Pitch.html) — open in a browser for the full pitch deck.
 
 ## Prerequisites
 
@@ -111,7 +119,7 @@ Four new columns — **Summary**, **Category**, **Action Items**, and **Reply St
 
 ## 5. Notion integration setup (optional)
 
-Notion integration pushes action items extracted from emails into a Notion database and tracks sender history in a separate contacts database.
+Notion integration provides two-way sync: push analyzed emails, action items, and sender records to Notion, and pull them back (including manual edits made in Notion). Three separate databases are used.
 
 ### 5a. Create a Notion internal integration
 
@@ -214,7 +222,7 @@ Build and run the application using Docker. This runs both the Telegram bot and 
 docker compose up --build -d
 ```
 
-This mounts the `logs/` directory and uses your `.env` file for configuration.
+This mounts the `logs/` and `data/` directories and uses your `.env` file for configuration. The `data/` volume persists the SQLite cache across container restarts.
 
 #### View logs
 
@@ -237,26 +245,29 @@ The Telegram bot provides an interactive interface for email analysis.
 |---|---|
 | `/analyze` | Run email analysis pipeline |
 | `/briefing` | Morning briefing — overdue, due today, open action items + LLM recommendation |
-| `/load` | Load previous analyses from Notion |
-| `/loadactions` | Load action items from Notion into local DB |
-| `/sync` | Sync contact list from Notion into local DB |
-| `/push` | Push all unsynced analyzed data to Notion |
 | `/emails` | Browse analyzed emails with pagination |
 | `/actions` | Show all action items |
+| `/load` | Load previous email analyses from Notion |
+| `/loadactions` | Load action items from Notion |
+| `/sync` | Sync contact list from Notion |
+| `/push` | Push all unsynced data (emails, action items, senders) to Notion |
 | `/reset` | Clear chat history |
 | `/help` | Show help message |
 
 ### Features
 
+- **Email analysis** — `/analyze` reads new emails from Google Sheets, runs them through Claude, and stores results locally
 - **Morning briefing** — `/briefing` shows overdue items, items due today, all open action items, and a short LLM-generated recommendation for what to tackle first
 - **Email browsing** — Paginated list of analyzed emails with inline keyboard navigation
 - **Detail view** — View full email analysis: summary, category, action items, reply strategy
 - **Draft reply generation** — Generate a professional reply using Claude, based on the email context and reply strategy
 - **Save as Gmail Draft** — One-click button to save the generated reply as a draft in your Gmail inbox (requires Gmail API setup)
 - **Free-text chat** — Send any message to chat about the analyzed emails with full conversation history
-- **Action items sync** — `/loadactions` downloads action items from Notion into the local DB, keeping them in sync with manual edits made in Notion
-- **Contact sync** — `/sync` downloads sender profiles (including manual notes) from Notion into the local DB for faster lookups
-- **Push to Notion** — `/push` uploads all unsynced emails, action items, and sender records to Notion in one command
+- **Two-way Notion sync:**
+  - `/load` — pull email analyses from Notion into the local DB
+  - `/loadactions` — pull action items from Notion (reflects manual edits made in Notion)
+  - `/sync` — pull sender profiles (including manual notes) from Notion
+  - `/push` — push all unsynced emails, action items, and sender records to Notion
 
 ### Gmail draft flow
 
@@ -346,6 +357,11 @@ Already-processed rows (those with an existing Summary value) are skipped on re-
 │       └── formatters.py          # Message formatting utilities
 ├── data/
 │   └── email_cache.db             # SQLite cache (auto-created, do not commit)
+├── agent_architecture.png         # Architecture diagram
+├── Email Triage Agent Pitch.html   # Hackathon pitch deck (open in browser)
+├── Dockerfile                     # Docker image definition
+├── docker-compose.yml             # Compose config (bot + cron CLI)
+├── entrypoint.sh                  # Container entrypoint (starts bot + cron)
 ├── requirements.txt
 ├── pyproject.toml                 # Black & Pylint config
 ├── .env                           # API keys (do not commit)
@@ -387,7 +403,7 @@ All analysis results are cached in a local SQLite database (`data/email_cache.db
 
 - **Fast lookups** — sender context and email data are read from SQLite instead of querying Notion on every request
 - **Offline operation** — the Telegram bot works without Notion connectivity
-- **Two-way sync** — unsynced local records are pushed to Notion on bot shutdown (or manually). Loading from Notion imports records back into SQLite
+- **Two-way sync** — pull from Notion with `/load`, `/loadactions`, `/sync`; push to Notion with `/push` or automatically on bot shutdown
 - **Thread safety** — all DB access is serialized via a threading lock, safe for parallel LLM workers
 
 Each record tracks its provenance (`source`: `local` or `notion`) and a `synced` flag. Only dirty local records are pushed to Notion, avoiding redundant API calls.

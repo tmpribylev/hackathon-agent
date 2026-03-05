@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Email Triage Agent — Pitch</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #eef2f7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 32px 16px;
+    gap: 16px;
+  }
+
+  /* NAV */
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+    color: #6b7280;
+    font-weight: 500;
+  }
+  .nav button {
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 6px 18px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    transition: all .15s;
+  }
+  .nav button:hover { background: #f3f4f6; }
+  .nav button:disabled { opacity: .35; cursor: default; }
+
+  /* SLIDE WRAPPER */
+  .slide-wrapper { display: none; width: 100%; max-width: 1080px; }
+  .slide-wrapper.active { display: block; }
+
+  /* SLIDE CARD */
+  .slide {
+    background: white;
+    border-radius: 18px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.08), 0 1px 4px rgba(0,0,0,.04);
+    padding: 52px 60px;
+    width: 100%;
+    min-height: 600px;
+  }
+
+  /* ─────────────────────────────── SLIDE 1 ─── */
+  .slide-1 { min-height: 600px; display: flex; flex-direction: column; justify-content: space-between; }
+
+  .s1-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #9ca3af;
+    margin-bottom: 12px;
+  }
+  .s1-title {
+    font-size: 42px;
+    font-weight: 800;
+    color: #111827;
+    line-height: 1.12;
+    margin-bottom: 8px;
+  }
+  .s1-subtitle {
+    font-size: 17px;
+    color: #6b7280;
+    font-weight: 400;
+    margin-bottom: 44px;
+  }
+
+  .s1-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 44px;
+  }
+  .stat-card {
+    background: #f9fafb;
+    border-radius: 14px;
+    padding: 24px 22px;
+    border-left: 4px solid #e5e7eb;
+    position: relative;
+  }
+  .stat-card.red   { border-left-color: #ef4444; }
+  .stat-card.amber { border-left-color: #f59e0b; }
+  .stat-card.blue  { border-left-color: #3b82f6; }
+  .stat-num {
+    font-size: 36px;
+    font-weight: 800;
+    color: #111827;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .stat-label {
+    font-size: 13px;
+    color: #6b7280;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  .stat-sub {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 4px;
+  }
+
+  .s1-gap {
+    background: #fef9f0;
+    border: 1.5px solid #fcd34d;
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 36px;
+  }
+  .s1-gap-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #b45309;
+    margin-bottom: 10px;
+  }
+  .s1-gap-items {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .gap-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    color: #374151;
+    font-weight: 500;
+  }
+  .gap-icon {
+    width: 22px; height: 22px;
+    background: #fef3c7;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .s1-keyline {
+    background: linear-gradient(135deg, #1e40af 0%, #4f46e5 100%);
+    border-radius: 14px;
+    padding: 22px 28px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .s1-keyline-icon { font-size: 26px; flex-shrink: 0; }
+  .s1-keyline-text {
+    font-size: 17px;
+    font-weight: 600;
+    color: white;
+    line-height: 1.4;
+  }
+  .s1-keyline-text em {
+    font-style: normal;
+    color: #bfdbfe;
+  }
+
+  /* slide counter chip */
+  .slide-counter {
+    position: absolute;
+    top: 20px; right: 28px;
+    font-size: 11px;
+    color: #d1d5db;
+    font-weight: 500;
+  }
+
+ /* ── SLIDE 2 — image container ── */
+  .slide-2 { display: flex; flex-direction: column; gap: 20px; min-height: 680px; }
+
+  .s2-header { flex-shrink: 0; }
+  .s2-title { font-size: 28px; font-weight: 800; color: #111827; margin-bottom: 4px; }
+  .s2-subtitle { font-size: 14px; color: #9ca3af; font-weight: 400; }
+
+  .img-container {
+    flex: 1;
+    border: 2px dashed #d1d5db;
+    border-radius: 14px;
+    background: #f9fafb;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    min-height: 480px;
+  }
+  /* When the img is present it fills the container */
+  .img-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 12px;
+    display: block;
+  }
+  /* Placeholder shown only when src is empty / not set */
+  .img-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: #9ca3af;
+    pointer-events: none;
+    user-select: none;
+  }
+  .img-placeholder-icon { font-size: 42px; }
+  .img-placeholder-label { font-size: 13px; font-weight: 600; color: #9ca3af; }
+  .img-placeholder-hint  { font-size: 11.5px; color: #c4c9d4; font-family: 'Courier New', monospace; background: #f0f0f0; padding: 4px 10px; border-radius: 6px; }
+
+
+  /* ─── SLIDE 3 ─── */
+  .slide-3 { display: flex; flex-direction: column; }
+  .s3-header { margin-bottom: 28px; }
+  .s3-title { font-size: 28px; font-weight: 800; color: #111827; margin-bottom: 4px; }
+  .s3-subtitle { font-size: 14px; color: #9ca3af; }
+
+  .diff-frame {
+    background: #f9fafb;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+  }
+  .diff-hook {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1e40af;
+    margin-bottom: 20px;
+    line-height: 1.4;
+    border-left: 4px solid #3b82f6;
+    padding-left: 14px;
+  }
+  .diff-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+  .diff-card {
+    background: white;
+    border-radius: 11px;
+    padding: 14px 14px 12px;
+    border: 1.5px solid #e5e7eb;
+    border-top: 3px solid;
+    font-size: 12px;
+  }
+  .diff-card.c1 { border-top-color: #f59e0b; }
+  .diff-card.c2 { border-top-color: #3b82f6; }
+  .diff-card.c3 { border-top-color: #8b5cf6; }
+  .diff-card.c4 { border-top-color: #10b981; }
+  .diff-card.c5 { border-top-color: #ef4444; }
+  .diff-card-num {
+    font-size: 22px; font-weight: 800; color: #111827; margin-bottom: 6px;
+  }
+  .diff-card-title { font-weight: 700; color: #111827; margin-bottom: 4px; font-size: 12.5px; }
+  .diff-card-desc { color: #6b7280; line-height: 1.4; font-size: 11.5px; }
+
+  .next-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .next-box {
+    background: #f0f9ff;
+    border: 1.5px solid #bae6fd;
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .next-box-title { font-size: 12px; font-weight: 700; color: #0369a1; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+  .next-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 12.5px; color: #0c4a6e; line-height: 1.4; margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .next-item::before { content: '→'; color: #0ea5e9; font-weight: 700; flex-shrink: 0; }
+
+  .qa-box {
+    background: #faf5ff;
+    border: 1.5px solid #e9d5ff;
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+  .qa-box-title { font-size: 12px; font-weight: 700; color: #7e22ce; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+  .qa-item { font-size: 12px; color: #581c87; margin-bottom: 7px; line-height: 1.4; font-weight: 500; }
+  .qa-item strong { color: #7e22ce; }
+
+  /* ─── LEGEND ─── */
+  .legend {
+    display: flex; gap: 20px; flex-wrap: wrap;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 500;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<!-- SLIDE 1 -->
+<div class="slide-wrapper active" id="s1">
+  <div class="slide slide-1" style="position:relative">
+    <span class="slide-counter">1 / 3</span>
+
+    <div>
+      <div class="s1-eyebrow">T1A Hackathon — Email Triage Agent</div>
+      <div class="s1-title">Email is broken.<br>For everyone.</div>
+      <div class="s1-subtitle">Existing tools summarize emails. Nobody solves the inbox.</div>
+    </div>
+
+    <div class="s1-stats">
+      <div class="stat-card red">
+        <div class="stat-num">100+</div>
+        <div class="stat-label">Emails per day<br>for a knowledge worker</div>
+      </div>
+      <div class="stat-card amber">
+        <div class="stat-num">2.5h</div>
+        <div class="stat-label">Lost daily to repetitive<br>email triage</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-num">0</div>
+        <div class="stat-label">Tools that triage the whole inbox<br>and remember your contacts</div>
+      </div>
+    </div>
+
+    <div class="s1-gap">
+      <div class="s1-gap-title">⚠ The Gap — What Existing Tools Miss</div>
+      <div class="s1-gap-items">
+        <div class="gap-item"><div class="gap-icon">⚡</div>One email at a time — no inbox-level view</div>
+        <div class="gap-item"><div class="gap-icon">🧠</div>No sender memory — same context, every time</div>
+        <div class="gap-item"><div class="gap-icon">📋</div>No action item tracking across sessions</div>
+        <div class="gap-item"><div class="gap-icon">✍️</div>Generic replies — not strategically grounded</div>
+      </div>
+    </div>
+
+    <div class="s1-keyline">
+      <div class="s1-keyline-icon">💡</div>
+      <div class="s1-keyline-text">
+        What if an agent handled email triage for you —
+        <em>and got smarter about your contacts over time?</em>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SLIDE 2 — Architecture (image) ─── -->
+<div class="slide-wrapper" id="s2">
+  <div class="slide slide-2">
+    <span class="slide-counter">2 / 3</span>
+    <div class="s2-header">
+      <div class="s2-title">Email Triage Agent — Architecture</div>
+      <div class="s2-subtitle">Parallel LLM analysis · Sender memory · Two-way sync · CLI + Telegram interfaces</div>
+    </div>
+
+    <div class="img-container" id="archContainer">
+      <img src="./agent_architecture.png" alt="Architecture diagram" />
+    </div>
+
+  </div>
+</div>
+
+<!-- SLIDE 3 — Differentiators + Next -->
+<div class="slide-wrapper" id="s3">
+  <div class="slide slide-3" style="position:relative">
+    <span class="slide-counter">3 / 3</span>
+    <div class="s3-header">
+      <div class="s3-title">Why This Wins</div>
+      <div class="s3-subtitle">Five differentiators, two horizons, and the Q&amp;A anchors</div>
+    </div>
+
+    <div class="diff-frame">
+      <div class="diff-hook">Every other tool treats emails in isolation. This one triages your whole inbox, builds a model of your contacts, and fits in your Telegram.</div>
+      <div class="diff-grid">
+        <div class="diff-card c1">
+          <div class="diff-card-num">01</div>
+          <div class="diff-card-title">🧠 Sender Memory</div>
+          <div class="diff-card-desc">Contact profiles built over time. Manual Notion notes override AI summaries. Context injected into every analysis.</div>
+        </div>
+        <div class="diff-card c2">
+          <div class="diff-card-num">02</div>
+          <div class="diff-card-title">⚡ Daily Briefing</div>
+          <div class="diff-card-desc">Overdue items, today's priorities, LLM recommendation — inbox state in 5 seconds flat.</div>
+        </div>
+        <div class="diff-card c3">
+          <div class="diff-card-num">03</div>
+          <div class="diff-card-title">📋 Action Tracking</div>
+          <div class="diff-card-desc">Priority, due date, status — persisted across sessions. Not summaries that disappear.</div>
+        </div>
+        <div class="diff-card c4">
+          <div class="diff-card-num">04</div>
+          <div class="diff-card-title">👥 Team Visibility</div>
+          <div class="diff-card-desc">Two-way Notion sync. Your team sees the same state. Local SQLite keeps it fast.</div>
+        </div>
+        <div class="diff-card c5">
+          <div class="diff-card-num">05</div>
+          <div class="diff-card-title">🛡 Reliability</div>
+          <div class="diff-card-desc">Input sanitization for API edge cases. 4-worker parallel processing. Already-analyzed emails skipped.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="next-row">
+      <div class="next-box">
+        <div class="next-box-title">🚀 What's Next</div>
+        <div class="next-item">Agentic chat with tool use — "draft replies to all urgent emails"</div>
+        <div class="next-item">Scheduled daily Telegram briefings</div>
+        <div class="next-item">Team routing — delegate based on category &amp; team roles</div>
+        <div class="next-item">Routine action items automation - comprehansive task assistant</div>
+      </div>
+      <div class="qa-box">
+        <div class="qa-box-title">🎯 Q&amp;A Anchors</div>
+        <div class="qa-item"><strong>"Why Sheets?"</strong> — Secure reasons, direct access to Gmail may expose sensetive information.</div>
+        <div class="qa-item"><strong>"Different from Gmail AI?"</strong> — Those do one email. This does the whole inbox, with memory and tracking.</div>
+        <div class="qa-item"><strong>"Does sender memory work?"</strong> — Manual notes always win. AI summary updates incrementally.</div>
+        <div class="qa-item"><strong>"Security?"</strong> — Your Google account, your Notion, your SQLite, additional filtering. Nothing stored by Anthropic.</div>
+        <div class="qa-item"><strong>"Memory usage?"</strong> — Due to LLM delegation, actual memory consumption went under 120MB during 1 hour run.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <button id="prevBtn" onclick="navigate(-1)" disabled>← Prev</button>
+  <span id="navLabel">Slide 1 of 3</span>
+  <button id="nextBtn" onclick="navigate(1)">Next →</button>
+</div>
+
+<script>
+  let current = 0;
+  const slides = ['s1','s2','s3'];
+  const labels = ['Problem — The Email Gap','Architecture Overview','Differentiators + What\'s Next'];
+
+  function navigate(dir) {
+    document.getElementById(slides[current]).classList.remove('active');
+    current = Math.max(0, Math.min(slides.length - 1, current + dir));
+    document.getElementById(slides[current]).classList.add('active');
+    document.getElementById('navLabel').textContent = `Slide ${current+1} of ${slides.length} — ${labels[current]}`;
+    document.getElementById('prevBtn').disabled = current === 0;
+    document.getElementById('nextBtn').disabled = current === slides.length - 1;
+  }
+  document.getElementById('navLabel').textContent = `Slide 1 of ${slides.length} — ${labels[0]}`;
+</script>
+</body>
+</html>

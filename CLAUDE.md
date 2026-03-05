@@ -40,7 +40,7 @@ Config is in `pyproject.toml`: line length 100, target Python 3.10.
 - **`src/config.py`** — `Config` dataclass, loads `.env` via `dotenv` at import time
 - **`src/llm/client.py`** — `LLMClient`, thin Anthropic SDK wrapper with a `complete(prompt)` method (defaults to `claude-sonnet-4-6`)
 - **`src/sheets/client.py`** — `SheetsClient`, handles Google OAuth2 auth and Sheets API read/write. Key static helpers: `find_col(headers, *candidates)` for case-insensitive header detection, `col_to_letter(col)` for 1-based column index to letter
-- **`src/notion/client.py`** — `NotionClient`, manages three Notion databases: action items (`write_action_items`), email analyses (`write_email_analysis`, `read_email_analyses`), and sender contacts (`get_sender`, `upsert_sender`). Uses `client.request()` for queries because the v3 `notion-client` SDK removed `databases.query()`
+- **`src/notion/client.py`** — `NotionClient`, manages three Notion databases: action items (`write_action_items`, `read_all_action_items`), email analyses (`write_email_analysis`, `read_email_analyses`), and sender contacts (`get_sender`, `upsert_sender`, `read_all_senders`). Uses `client.request()` for queries because the v3 `notion-client` SDK removed `databases.query()`
 - **`src/gmail/client.py`** — `GmailClient`, Gmail API OAuth2 auth and draft creation
 - **`src/agents/email_analyzer.py`** — `EmailAnalyzer`, the orchestrator: fetches rows, looks up sender context from the Notion sender DB, calls Claude per email, parses the structured response (Summary/Category/Action Items/Reply Strategy), writes back, upserts sender in Notion, and optionally pushes action items to Notion
 - **`src/console/renderer.py`** — `EmailTableRenderer`, ANSI-colored terminal output
