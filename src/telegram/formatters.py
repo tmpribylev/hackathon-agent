@@ -62,18 +62,33 @@ def format_draft_reply(email: AnalyzedEmail, draft: str) -> str:
 
 
 def split_message(text: str) -> list[str]:
-    """Split text at newlines to fit TG 4096-char limit."""
+    """Split text at newlines to fit TG 4096-char limit.
+
+    Long lines that exceed the limit on their own are broken at the last
+    whitespace boundary so words are never cut in half.
+    """
     if len(text) <= TG_MAX_MESSAGE_LENGTH:
         return [text]
 
     chunks: list[str] = []
     current = ""
     for line in text.split("\n"):
+        # Break an oversized single line into smaller pieces at word boundaries
+        while len(line) > TG_MAX_MESSAGE_LENGTH:
+            cut = line[:TG_MAX_MESSAGE_LENGTH].rfind(" ")
+            if cut <= 0:
+                cut = TG_MAX_MESSAGE_LENGTH
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(line[:cut])
+            line = line[cut:].lstrip()
+
         candidate = f"{current}\n{line}" if current else line
         if len(candidate) > TG_MAX_MESSAGE_LENGTH:
             if current:
                 chunks.append(current)
-            current = line[:TG_MAX_MESSAGE_LENGTH]
+            current = line
         else:
             current = candidate
     if current:

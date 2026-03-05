@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 HELP_TEXT = (
     "<b>Email Analyzer Bot</b>\n\n"
     "/analyze — Run email analysis pipeline\n"
+    "/briefing — Morning briefing with priorities\n"
     "/load — Load previous analyses from Notion\n"
     "/sync — Sync contact list from Notion\n"
     "/emails — Browse analyzed emails\n"
@@ -100,6 +101,19 @@ async def sync_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(
             f"Sync failed: {_esc(str(exc))}", parse_mode="HTML"
         )
+
+
+async def briefing_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    log.info("/briefing from user=%d", update.effective_user.id)
+    service = _get_service(context)
+    await update.message.reply_text("Generating your morning briefing…")
+    try:
+        text = await asyncio.to_thread(service.briefing)
+        for chunk in split_message(text):
+            await update.message.reply_text(chunk)
+    except Exception as exc:
+        log.error("Briefing failed: %s", exc)
+        await update.message.reply_text(f"Briefing failed: {_esc(str(exc))}", parse_mode="HTML")
 
 
 async def emails_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
