@@ -48,6 +48,16 @@ GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]
 # ── Local DB cache ───────────────────────────────────────────────────────────
 DEFAULT_DB_PATH = "data/email_cache.db"
 
+# ── LLM input blocklist ─────────────────────────────────────────────────────
+# Pipe-separated list of strings that must be stripped from any text sent to
+# the LLM. Some content triggers API errors and cannot be sent.
+# Example .env: LLM_BLOCKED_STRINGS="bad string one|another bad string"
+LLM_BLOCKED_STRINGS: list[str] = [
+    s.strip()
+    for s in os.getenv("LLM_BLOCKED_STRINGS", "").split("|")
+    if s.strip()
+]
+
 
 @dataclass
 class Config:
